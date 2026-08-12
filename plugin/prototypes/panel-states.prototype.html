@@ -1,0 +1,216 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Ticket #10 (Panel states & plain-language copy).
+  Cycles the non-success states of the calm-blocks panel (#7): empty / ready / exporting /
+  error:server / error:folder / error:failed. Switch with ?state= or the bottom bar / arrow keys.
+  ☾/☀ toggles theme. The fork here is COPY & treatment, not layout — so this is one cohesive
+  panel cycled through states, not A/B/C variants. Open the file in a browser.
+
+  Anchored to real states in plugin/src/ui.ts (setStatus progress/err, disabled button, server
+  fetch failures). "Selection too large" is intentionally NOT here — it's a #9 report warning.
+  Server *onboarding* is out of scope (map): unreachable shows a plain message + Retry, no wizard.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Prototype — panel states (#10)</title>
+    <style>
+      :root {
+        --figma-color-bg: #fff; --figma-color-bg-secondary: #f5f5f5;
+        --figma-color-bg-brand: #0d99ff; --figma-color-bg-brand-hover: #007be5;
+        --figma-color-bg-danger-tint: rgba(242,72,34,.1); --figma-color-text-danger: #c8341c;
+        --figma-color-text: #1a1a1a; --figma-color-text-secondary: #7a7a7a;
+        --figma-color-border: rgba(0,0,0,.1); --figma-color-border-strong: rgba(0,0,0,.3);
+      }
+      body.dark {
+        --figma-color-bg: #2c2c2c; --figma-color-bg-secondary: #383838;
+        --figma-color-bg-brand: #0d99ff; --figma-color-bg-brand-hover: #3badff;
+        --figma-color-bg-danger-tint: rgba(242,72,34,.16); --figma-color-text-danger: #ff8a7a;
+        --figma-color-text: #fff; --figma-color-text-secondary: #9c9c9c;
+        --figma-color-border: rgba(255,255,255,.12); --figma-color-border-strong: rgba(255,255,255,.35);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; font-family: Inter, -apple-system, "Segoe UI", sans-serif; background: #6b6b6b;
+        display: flex; justify-content: center; align-items: flex-start; padding: 40px 16px 96px; min-height: 100vh;
+      }
+      .panel {
+        width: 340px; background: var(--figma-color-bg); color: var(--figma-color-text);
+        border-radius: 8px; box-shadow: 0 12px 40px rgba(0,0,0,.45); overflow: hidden; font-size: 11px; line-height: 16px;
+      }
+      .inner { padding: 12px 12px 20px; }
+      .block { margin-top: 16px; }
+      .block:first-child { margin-top: 0; }
+      .blocktitle { font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--figma-color-text-secondary); margin-bottom: 8px; }
+      .body-dim { opacity: .55; pointer-events: none; }
+
+      .selcard { display: flex; gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--figma-color-border); border-radius: 6px; background: var(--figma-color-bg-secondary); }
+      .selcard.empty { border-style: dashed; }
+      .thumb { width: 32px; height: 32px; border-radius: 4px; flex: none; background: linear-gradient(135deg,#7b61ff,#0d99ff); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; }
+      .thumb.empty { background: none; border: 1.5px dashed var(--figma-color-border-strong); color: var(--figma-color-text-secondary); }
+      .name { font-weight: 600; font-size: 12px; }
+      .meta { color: var(--figma-color-text-secondary); font-size: 11px; }
+
+      .field-row { display: flex; gap: 4px; }
+      input[type=text] { flex: 1; height: 30px; padding: 0 8px; border: 1px solid var(--figma-color-border-strong); border-radius: 2px; font: inherit; color: var(--figma-color-text); background: var(--figma-color-bg); }
+      input.bad { border-color: var(--figma-color-text-danger); }
+      .ghost { height: 30px; padding: 0 10px; background: var(--figma-color-bg-secondary); color: var(--figma-color-text); border: 1px solid var(--figma-color-border); border-radius: 2px; font: inherit; cursor: pointer; }
+      .segrow { display: flex; gap: 4px; }
+      .seg { flex: 1; text-align: center; padding: 7px 4px; border-radius: 4px; border: 1px solid var(--figma-color-border); background: var(--figma-color-bg); font-weight: 600; font-size: 11px; }
+      .seg.on { background: var(--figma-color-bg-brand); color: #fff; border-color: var(--figma-color-bg-brand); }
+      .checkrow { display: flex; gap: 8px; align-items: flex-start; }
+      .clabel { font-weight: 600; }
+      .conn { display: flex; align-items: center; gap: 6px; color: var(--figma-color-text-secondary); }
+      .dot { width: 7px; height: 7px; border-radius: 999px; background: #14ae5c; }
+      .dot.off { background: var(--figma-color-text-danger); }
+      code { font-family: ui-monospace, Menlo, monospace; font-size: 10px; }
+
+      .btn { height: 32px; width: 100%; border: 0; border-radius: 6px; margin-top: 18px; background: var(--figma-color-bg-brand); color: #fff; font-weight: 600; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+      .btn:disabled { opacity: .45; cursor: default; }
+      .spinner { width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 999px; animation: spin .7s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .status { margin-top: 10px; display: flex; align-items: center; gap: 7px; color: var(--figma-color-text-secondary); }
+      .status .spinner { border-color: rgba(127,127,127,.35); border-top-color: var(--figma-color-text-secondary); }
+
+      .banner { margin-top: 14px; padding: 10px; border-radius: 6px; background: var(--figma-color-bg-danger-tint); border: 1px solid rgba(242,72,34,.4); color: var(--figma-color-text-danger); }
+      .banner .bt { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+      .banner .bmsg { margin-top: 4px; }
+      .banner .bactions { margin-top: 10px; display: flex; gap: 6px; }
+      .banner .bbtn { height: 28px; padding: 0 12px; border-radius: 4px; border: 1px solid currentColor; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+      .banner .bbtn.solid { background: var(--figma-color-text-danger); color: #fff; border-color: transparent; }
+
+      .switcher { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; z-index: 9; background: #111; color: #fff; border-radius: 999px; padding: 6px 8px; box-shadow: 0 6px 24px rgba(0,0,0,.5); font-size: 12px; }
+      .switcher button { background: #2a2a2a; color: #fff; border: 0; border-radius: 999px; width: 26px; height: 26px; cursor: pointer; font-size: 14px; }
+      .switcher button.wide { width: auto; padding: 0 10px; }
+      .switcher .vlabel { padding: 0 8px; min-width: 210px; text-align: center; font-weight: 600; }
+      .switcher .sep { width: 1px; height: 18px; background: #444; margin: 0 2px; }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div class="panel"><div class="inner" id="panel"></div></div>
+
+    <div class="switcher">
+      <button onclick="cycle(-1)">‹</button>
+      <span class="vlabel" id="vlabel"></span>
+      <button onclick="cycle(1)">›</button>
+      <span class="sep"></span>
+      <button class="wide" onclick="toggleTheme()" id="themebtn">☾</button>
+    </div>
+
+    <script>
+      const STATES = [
+        ["empty", "Nothing selected"],
+        ["ready", "Ready to export"],
+        ["exporting", "Exporting…"],
+        ["err-server", "Error · server unreachable"],
+        ["err-folder", "Error · folder not found"],
+        ["err-failed", "Error · export failed"],
+      ];
+      function cur() {
+        const s = new URLSearchParams(location.search).get("state");
+        return STATES.some(([k]) => k === s) ? s : "empty";
+      }
+
+      // ---- shared panel body (the calm-blocks skeleton) ----
+      function selCard(state) {
+        if (state === "empty") {
+          return `<div class="selcard empty">
+            <div class="thumb empty">+</div>
+            <div><div class="name">Nothing selected</div>
+            <div class="meta">Pick a layer, frame, or component on the canvas to export.</div></div>
+          </div>`;
+        }
+        return `<div class="selcard">
+          <div class="thumb">◈</div>
+          <div><div class="name">Button / Primary</div><div class="meta">Component set · 4 variants</div></div>
+        </div>`;
+      }
+      function controls(state) {
+        const off = state === "err-server";
+        return `
+          <div class="block"><div class="blocktitle">Where it goes</div>
+            <div class="field-row">
+              <input type="text" class="${state === "err-folder" ? "bad" : ""}" value="~/Programming/my-repo/figma-export" />
+              <button class="ghost">Browse…</button>
+            </div>
+          </div>
+          <div class="block"><div class="blocktitle">Preview image</div>
+            <div class="segrow"><div class="seg on">Vector</div><div class="seg">Image</div><div class="seg">Skip</div></div>
+          </div>
+          <div class="block"><div class="blocktitle">Output</div>
+            <div class="segrow"><div class="seg on">Folder of assets</div><div class="seg">Single SVG file</div></div>
+          </div>
+          <div class="block"><div class="blocktitle">Options</div>
+            <div class="checkrow"><input type="checkbox" checked id="opt" /><label class="clabel" for="opt">Include components from other files</label></div>
+          </div>
+          <div class="block"><div class="blocktitle">Connection</div>
+            <div class="conn"><span class="dot ${off ? "off" : ""}"></span> ${off ? "Not connected" : "Connected"} · <code>http://localhost:3579/sync</code></div>
+          </div>`;
+      }
+      function exportButton(state) {
+        if (state === "empty") return `<button class="btn" disabled>Select something to export</button>`;
+        if (state === "exporting") return `<button class="btn" disabled><span class="spinner"></span> Exporting…</button>`;
+        return `<button class="btn">Export “Button / Primary”</button>`;
+      }
+      function statusOrBanner(state) {
+        if (state === "exporting") {
+          return `<div class="status"><span class="spinner"></span> Saving files to your folder…</div>`;
+        }
+        if (state === "err-server") {
+          return banner("Can’t reach the export server",
+            "The local server isn’t responding. Make sure it’s running, then try again.",
+            [["Try again", "solid"], ["Copy endpoint", ""]]);
+        }
+        if (state === "err-folder") {
+          return banner("That folder couldn’t be found",
+            "Check the path above, or choose another folder with Browse.",
+            [["Choose folder…", "solid"]]);
+        }
+        if (state === "err-failed") {
+          return banner("Export didn’t finish",
+            "Something went wrong while exporting this selection. Try again, and if it keeps happening, try a smaller frame.",
+            [["Try again", "solid"]]);
+        }
+        return "";
+      }
+      function banner(title, msg, actions) {
+        return `<div class="banner">
+          <div class="bt">⚠ ${title}</div>
+          <div class="bmsg">${msg}</div>
+          <div class="bactions">${actions.map(([label, cls]) => `<button class="bbtn ${cls}">${label}</button>`).join("")}</div>
+        </div>`;
+      }
+
+      function render() {
+        const s = cur();
+        const dim = s === "exporting" ? " body-dim" : "";
+        const html = `
+          <div class="block">${selCard(s)}</div>
+          <div class="${dim}">${controls(s)}</div>
+          ${exportButton(s)}
+          ${statusOrBanner(s)}`;
+        document.getElementById("panel").innerHTML = html;
+        document.getElementById("vlabel").textContent = STATES.find(([k]) => k === s)[1];
+      }
+      function cycle(d) {
+        const keys = STATES.map(([k]) => k);
+        const i = keys.indexOf(cur());
+        const next = keys[(i + d + keys.length) % keys.length];
+        const u = new URL(location); u.searchParams.set("state", next); history.replaceState(null, "", u);
+        render();
+      }
+      function toggleTheme() {
+        document.body.classList.toggle("dark");
+        document.getElementById("themebtn").textContent = document.body.classList.contains("dark") ? "☀" : "☾";
+      }
+      document.addEventListener("keydown", (e) => {
+        const t = e.target; if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        if (e.key === "ArrowLeft") cycle(-1);
+        if (e.key === "ArrowRight") cycle(1);
+      });
+      render();
+    </script>
+  </body>
+</html>
