@@ -15,6 +15,8 @@
         --brand-text: var(--figma-color-text-onbrand, #fff);
         --accent: #14ae5c;
         --err: var(--figma-color-text-danger, #f24822);
+        --err-bg: rgba(242, 72, 34, 0.1);
+        --err-border: rgba(242, 72, 34, 0.4);
         --warn: var(--figma-color-text-warning, #a56a00);
         --warn-bg: rgba(242, 174, 34, 0.13);
         --warn-border: rgba(242, 174, 34, 0.4);
@@ -165,6 +167,63 @@
       #status { margin-top: 12px; white-space: pre-wrap; word-break: break-word; }
       #status.err { color: var(--err); }
       #status.progress { color: var(--muted); }
+
+      /* Exporting — dim the input controls while a run is in flight. */
+      #controls.dimmed { opacity: 0.5; pointer-events: none; }
+
+      /* Spinner — on the Export button while exporting. */
+      .spinner {
+        display: inline-block;
+        width: 13px;
+        height: 13px;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #fff;
+        border-radius: 999px;
+        animation: spin 0.7s linear infinite;
+        vertical-align: -2px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* Connection status dot — flips red when the server is unreachable. */
+      .conn-dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: var(--muted);
+        margin-right: 5px;
+        vertical-align: 1px;
+      }
+      .conn-dot.ok { background: var(--accent); }
+      .conn-dot.down { background: var(--err); }
+
+      /* Error banner — red danger + a recovery action (distinct from amber warnings). */
+      #banner {
+        margin-top: 12px;
+        display: none;
+        padding: 10px;
+        border-radius: 8px;
+        background: var(--err-bg);
+        border: 1px solid var(--err-border);
+      }
+      #banner.show { display: block; }
+      .b-title { display: flex; align-items: center; gap: 6px; font-weight: 700; color: var(--err); }
+      .b-msg { margin-top: 4px; color: var(--err); }
+      .b-actions { margin-top: 10px; display: flex; gap: 6px; }
+      .b-btn {
+        padding: 6px 12px;
+        border: 1px solid var(--err);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--err);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .b-btn.solid { background: var(--err); color: #fff; border-color: transparent; }
+
+      /* Folder input outlined red when the folder couldn't be found. */
+      input[type="text"].bad { border-color: var(--err); }
 
       /* Success report (rendered by the UI script). */
       #result { margin-top: 12px; display: none; }
@@ -343,6 +402,8 @@
       </div>
     </section>
 
+    <!-- Input controls — dimmed together while an export is in flight. -->
+    <div id="controls">
     <!-- 2 — Where it goes -->
     <section class="block">
       <div class="block-title">Where it goes</div>
@@ -386,13 +447,15 @@
 
     <!-- 6 — Connection -->
     <section class="block quiet">
-      <div class="block-title">Connection</div>
+      <div class="block-title"><span id="connDot" class="conn-dot"></span>Connection</div>
       <input id="endpoint" type="text" value="http://localhost:3579/sync" />
     </section>
+    </div>
 
     <!-- 7 — Export -->
     <button type="button" id="export" disabled>Select something to export</button>
     <div id="status"></div>
+    <div id="banner"></div>
     <div id="result"></div>
 
     __UI_SCRIPT__

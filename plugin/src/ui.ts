@@ -36,7 +36,10 @@ type FromPlugin =
 const byId = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 const statusEl = byId<HTMLDivElement>("status");
+const bannerEl = byId<HTMLDivElement>("banner");
 const resultEl = byId<HTMLDivElement>("result");
+const controlsEl = byId<HTMLDivElement>("controls");
+const connDotEl = byId<HTMLSpanElement>("connDot");
 const btn = byId<HTMLButtonElement>("export");
 const outputDirEl = byId<HTMLInputElement>("outputDir");
 const browseEl = byId<HTMLButtonElement>("browse");
@@ -60,6 +63,87 @@ let outputMode: "folder" | "single" = "folder";
 function setStatus(text: string, cls: "" | "err" | "progress" = ""): void {
   statusEl.textContent = text;
   statusEl.className = cls;
+}
+
+// --- connection indicator ----------------------------------------------
+// "unknown" until we've reached the server; "ok" once we have; "down" when
+// the server can't be reached (decision #10: the dot flips red).
+function setConnection(state: "unknown" | "ok" | "down"): void {
+  connDotEl.className = "conn-dot" + (state === "ok" ? " ok" : state === "down" ? " down" : "");
+}
+
+// --- error banner -------------------------------------------------------
+// Red danger banner carrying a recovery action (distinct from the amber
+// success-report warnings). Only one is shown at a time.
+interface BannerAction {
+  label: string;
+  solid?: boolean;
+  onClick: () => void;
+}
+
+function clearBanner(): void {
+  bannerEl.textContent = "";
+  bannerEl.className = "";
+}
+
+function showBanner(title: string, message: string, actions: BannerAction[]): void {
+  bannerEl.textContent = "";
+  const head = el("div", { class: "b-title" }, [
+    el("span", { text: "⚠" }),
+    el("span", { text: title }),
+  ]);
+  const acts = el("div", { class: "b-actions" });
+  for (const action of actions) {
+    const b = el("button", {
+      class: "b-btn" + (action.solid ? " solid" : ""),
+      text: action.label,
+    }) as HTMLButtonElement;
+    b.onclick = action.onClick;
+    acts.appendChild(b);
+  }
+  bannerEl.appendChild(head);
+  bannerEl.appendChild(el("div", { class: "b-msg", text: message }));
+  bannerEl.appendChild(acts);
+  bannerEl.className = "show";
+}
+
+function copyEndpoint(): void {
+  void navigator.clipboard?.writeText(endpointEl.value.trim());
+}
+
+/** Server unreachable — plain message + retry, no onboarding (decision #10). */
+function showServerUnreachable(): void {
+  setConnection("down");
+  setStatus("");
+  showBanner(
+    "Can’t reach the export server",
+    "The local server isn’t responding. Make sure it’s running, then try again.",
+    [
+      { label: "Try again", solid: true, onClick: startExport },
+      { label: "Copy endpoint", onClick: copyEndpoint },
+    ],
+  );
+}
+
+/** Output folder missing/invalid — outline the input and offer the picker. */
+function showFolderNotFound(): void {
+  outputDirEl.classList.add("bad");
+  setStatus("");
+  showBanner(
+    "That folder couldn’t be found",
+    "Check the path above, or choose another folder with Browse.",
+    [{ label: "Choose folder…", solid: true, onClick: () => void chooseFolder() }],
+  );
+}
+
+/** The export itself failed — offer a retry, hint at a smaller frame. */
+function showExportFailed(): void {
+  setStatus("");
+  showBanner(
+    "Export didn’t finish",
+    "Something went wrong while exporting this selection. Try again, and if it keeps happening, try a smaller frame.",
+    [{ label: "Try again", solid: true, onClick: startExport }],
+  );
 }
 
 // --- segmented controls -------------------------------------------------
@@ -333,9 +417,11 @@ async function openPath(target: string, trigger: HTMLButtonElement): Promise<voi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: target }),
     });
+    setConnection("ok");
     const body = (await res.json().catch(() => ({}))) as OpenResponse;
     if (!res.ok) setStatus(body.error || "Could not open that.", "err");
   } catch (err) {
+    setConnection("down");
     setStatus(`Could not reach the server to open that.\n${String(err)}`, "err");
   } finally {
     trigger.disabled = false;
@@ -433,36 +519,60 @@ function serverBase(): string {
   return endpointEl.value.trim().replace(/\/sync\/?$/, "");
 }
 
-browseEl.onclick = async () => {
+/** Open the native folder picker; doubles as the folder-error recovery action. */
+async function chooseFolder(): Promise<void> {
   const original = browseEl.textContent;
   browseEl.disabled = true;
   browseEl.textContent = "Choosing…";
   setStatus("Opening folder picker — look for a system dialog…", "progress");
   try {
     const res = await fetch(`${serverBase()}/pick-folder`);
+    setConnection("ok");
     const body = (await res.json().catch(() => ({}))) as PickFolderResponse;
     if (body.path) {
       outputDirEl.value = body.path;
+      outputDirEl.classList.remove("bad");
+      clearBanner();
       setStatus("");
     } else if (body.cancelled) {
       setStatus("");
     } else {
       setStatus(body.error || "Folder picker failed.", "err");
     }
-  } catch (err) {
-    setStatus(`Could not reach the server for the picker.\n${String(err)}`, "err");
+  } catch {
+    showServerUnreachable();
   } finally {
     browseEl.disabled = false;
     browseEl.textContent = original;
   }
-};
+}
+browseEl.onclick = () => void chooseFolder();
 
-btn.onclick = () => {
-  if (!selection[0]) return;
+/** Enter the exporting state: dim the controls, spin the button, calm status. */
+function enterExporting(): void {
   busy = true;
   btn.disabled = true;
+  controlsEl.classList.add("dimmed");
   resultEl.className = "";
-  setStatus("Reading document…", "progress");
+  btn.textContent = "";
+  btn.appendChild(el("span", { class: "spinner" }));
+  btn.appendChild(document.createTextNode(" Exporting…"));
+  // One calm line covers the whole Reading → Sending progression (decision #10).
+  setStatus("Saving files to your folder…", "progress");
+}
+
+/** Leave the exporting state and restore the ready controls. */
+function endExporting(): void {
+  busy = false;
+  controlsEl.classList.remove("dimmed");
+  renderSelection();
+}
+
+function startExport(): void {
+  if (!selection[0] || busy) return;
+  clearBanner();
+  outputDirEl.classList.remove("bad");
+  enterExporting();
   parent.postMessage(
     {
       pluginMessage: {
@@ -476,7 +586,8 @@ btn.onclick = () => {
     },
     "*",
   );
-};
+}
+btn.onclick = startExport;
 
 window.onmessage = async (event: MessageEvent) => {
   const msg = event.data.pluginMessage as FromPlugin | undefined;
@@ -489,17 +600,20 @@ window.onmessage = async (event: MessageEvent) => {
   }
   if (msg.type === "selection") {
     selection = msg.nodes;
+    if (!busy) {
+      clearBanner();
+      outputDirEl.classList.remove("bad");
+    }
     renderSelection();
     return;
   }
   if (msg.type === "progress") {
-    setStatus(msg.message, "progress");
+    // Ignore the granular technical text; the calm exporting line already shows.
     return;
   }
   if (msg.type === "error") {
-    setStatus(msg.message, "err");
-    busy = false;
-    renderSelection();
+    endExporting();
+    showExportFailed();
     return;
   }
   if (msg.type !== "result") return;
@@ -530,15 +644,18 @@ window.onmessage = async (event: MessageEvent) => {
   const iconCount = assets.filter((a) => a.name.endsWith(".svg")).length;
   const imageCount = assets.length - iconCount;
 
-  setStatus("Sending to server…", "progress");
   try {
     const res = await fetch(endpointEl.value.trim(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    setConnection("ok");
     const body = (await res.json().catch(() => ({}))) as SyncResponse;
+    endExporting();
     if (res.ok) {
+      clearBanner();
+      outputDirEl.classList.remove("bad");
       setStatus("");
       renderReport(payload.summary, {
         path: body.path || "written",
@@ -547,16 +664,15 @@ window.onmessage = async (event: MessageEvent) => {
         iconCount,
         imageCount,
       });
+    } else if (/output folder/i.test(body.error ?? "")) {
+      // The server reached us but rejected the destination folder.
+      showFolderNotFound();
     } else {
-      setStatus(`Server ${res.status}: ${body.error || "write failed"}`, "err");
+      showExportFailed();
     }
-  } catch (err) {
-    setStatus(
-      `Could not reach the server. Is it running on the endpoint above?\n${String(err)}`,
-      "err",
-    );
-  } finally {
-    busy = false;
-    renderSelection();
+  } catch {
+    // Network-level failure: the server couldn't be reached at all.
+    endExporting();
+    showServerUnreachable();
   }
 };
