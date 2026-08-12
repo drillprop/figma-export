@@ -1,0 +1,14 @@
+{
+  "name": "Export to Repo",
+  "id": "figma-export-local",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma", "dev"],
+  "documentAccess": "dynamic-page",
+  "enablePrivatePluginApi": true,
+  "networkAccess": {
+    "allowedDomains": ["http://localhost:3579"],
+    "reasoning": "Sends exported node and component JSON to the local figma-export server."
+  }
+}

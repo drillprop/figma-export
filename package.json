@@ -1,0 +1,28 @@
+{
+  "name": "figma-export",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Export Figma nodes and components to local repo files, via a Figma plugin + a local Hono server.",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "build:plugin": "node scripts/build-plugin.mjs",
+    "dev:plugin": "node scripts/build-plugin.mjs --watch",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.100.0",
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.24.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

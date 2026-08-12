@@ -1,0 +1,116 @@
+import { mkdir, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+import process from "node:process";
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import type { ExportPayload, SyncResponse } from "./shared/types";
+
+const PORT = Number(process.env.PORT ?? 3579);
+const DEFAULT_OUT = (process.env.OUT_DIR ?? "").trim();
+
+const app = new Hono();
+
+// The plugin UI posts from a `null` origin (iframe), so allow any origin. This
+// server binds to 127.0.0.1 only, so it is never reachable off the machine.
+app.use("/*", cors({ origin: "*", allowMethods: ["POST", "OPTIONS"] }));
+
+/** Keep an untrusted name to a safe single path segment (no traversal). */
+function slug(value: unknown, fallback: string): string {
+  const cleaned = String(value ?? "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return cleaned || fallback;
+}
+
+app.get("/", (c) => c.text("figma-export server — POST exports to /sync"));
+
+app.post("/sync", async (c) => {
+  let payload: ExportPayload;
+  try {
+    payload = await c.req.json<ExportPayload>();
+  } catch {
+    return c.json<SyncResponse>({ error: "Invalid JSON body" }, 400);
+  }
+
+  if (!payload || typeof payload.node !== "object" || payload.node === null) {
+    return c.json<SyncResponse>({ error: "Missing `node` in payload" }, 400);
+  }
+
+  const baseDir = (payload.outputDir || DEFAULT_OUT).trim();
+  if (!baseDir) {
+    return c.json<SyncResponse>(
+      {
+        error:
+          "No output folder. Set one in the plugin's Output folder field, or start the server with OUT_DIR.",
+      },
+      400,
+    );
+  }
+  if (!path.isAbsolute(baseDir)) {
+    return c.json<SyncResponse>({ error: `Output folder must be an absolute path: ${baseDir}` }, 400);
+  }
+  try {
+    const info = await stat(baseDir);
+    if (!info.isDirectory()) {
+      return c.json<SyncResponse>({ error: `Output folder is not a directory: ${baseDir}` }, 400);
+    }
+  } catch {
+    return c.json<SyncResponse>({ error: `Output folder does not exist: ${baseDir}` }, 400);
+  }
+
+  const fileDir = slug(payload.fileKey, "unknown-file");
+  const nodeDir = slug(payload.nodeName || payload.nodeId, "node");
+  const outDir = path.join(baseDir, fileDir, nodeDir);
+
+  try {
+    await mkdir(outDir, { recursive: true });
+
+    const meta = {
+      fileKey: payload.fileKey ?? null,
+      fileName: payload.fileName ?? null,
+      nodeId: payload.nodeId ?? null,
+      nodeName: payload.nodeName ?? null,
+      exportedAt: payload.exportedAt ?? new Date().toISOString(),
+      componentCount: payload.components?.length ?? 0,
+      remoteMasterCount: payload.remoteMasters?.length ?? 0,
+      hasSvg: typeof payload.svg === "string",
+      hasPng: typeof payload.png === "string",
+      summary: payload.summary ?? null,
+    };
+
+    const hasRemoteMasters = (payload.remoteMasters?.length ?? 0) > 0;
+
+    await Promise.all([
+      writeFile(path.join(outDir, "node.json"), JSON.stringify(payload.node, null, 2)),
+      writeFile(
+        path.join(outDir, "components.json"),
+        JSON.stringify(payload.components ?? [], null, 2),
+      ),
+      writeFile(path.join(outDir, "meta.json"), JSON.stringify(meta, null, 2)),
+      hasRemoteMasters
+        ? writeFile(
+            path.join(outDir, "remote-masters.json"),
+            JSON.stringify(payload.remoteMasters, null, 2),
+          )
+        : Promise.resolve(),
+      typeof payload.svg === "string"
+        ? writeFile(path.join(outDir, "preview.svg"), payload.svg)
+        : Promise.resolve(),
+      typeof payload.png === "string"
+        ? writeFile(path.join(outDir, "preview.png"), Buffer.from(payload.png, "base64"))
+        : Promise.resolve(),
+    ]);
+
+    console.log(`wrote ${payload.nodeName || payload.nodeId} → ${outDir}`);
+    return c.json<SyncResponse>({ ok: true, path: outDir });
+  } catch (error) {
+    return c.json<SyncResponse>({ error: `Write failed: ${String(error)}` }, 500);
+  }
+});
+
+serve({ fetch: app.fetch, port: PORT, hostname: "127.0.0.1" }, (info) => {
+  console.log(`figma-export server → http://127.0.0.1:${info.port}`);
+  console.log(`default output folder (OUT_DIR): ${DEFAULT_OUT || "— (set per-export in the plugin)"}`);
+});

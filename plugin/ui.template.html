@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --border: rgba(127, 127, 127, 0.25);
+        --muted: #888;
+        --chip: rgba(127, 127, 127, 0.14);
+        --card: rgba(127, 127, 127, 0.06);
+        --accent: #14ae5c;
+        --err: #f24822;
+      }
+      * { box-sizing: border-box; }
+      body {
+        font: 12px/1.45 -apple-system, Segoe UI, sans-serif;
+        margin: 0;
+        padding: 16px;
+        overflow-y: auto;
+      }
+      label { display: block; font-weight: 600; margin: 12px 0 4px; }
+      input[type="text"],
+      select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #999;
+        border-radius: 6px;
+        font: inherit;
+        background: transparent;
+      }
+      .row { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+      .row label { margin: 0; font-weight: 400; }
+      .hint { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+      #selection {
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--card);
+      }
+      #selName { font-weight: 600; word-break: break-word; }
+      #selMeta { color: var(--muted); font-size: 11px; }
+
+      button {
+        margin-top: 16px;
+        width: 100%;
+        padding: 10px;
+        border: 0;
+        border-radius: 6px;
+        background: #0d99ff;
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.5; cursor: default; }
+
+      #status { margin-top: 12px; white-space: pre-wrap; word-break: break-word; }
+      #status.err { color: var(--err); }
+      #status.progress { color: var(--muted); }
+
+      #result { margin-top: 12px; display: none; }
+      #result.show { display: block; }
+      .r-head {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-weight: 600;
+        color: var(--accent);
+      }
+      .r-path {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        color: var(--muted);
+        word-break: break-all;
+        margin: 4px 0 12px;
+      }
+      .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .stat {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: var(--card);
+      }
+      .stat-val { font-size: 16px; font-weight: 700; }
+      .stat-label { color: var(--muted); font-size: 11px; }
+
+      .section { margin-top: 14px; }
+      .section-title {
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+      .chip {
+        background: var(--chip);
+        border-radius: 5px;
+        padding: 2px 7px;
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .chip b { font-weight: 600; }
+      .chip .n { color: var(--muted); margin-left: 4px; }
+
+      .set { margin-bottom: 8px; }
+      .set-name { font-weight: 600; margin-bottom: 4px; word-break: break-word; }
+      .axis { display: flex; gap: 6px; align-items: baseline; margin: 3px 0; }
+      .axis-key { color: var(--muted); min-width: 64px; font-size: 11px; }
+
+      .samples { display: flex; flex-direction: column; gap: 2px; }
+      .sample { color: var(--muted); font-style: italic; }
+
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .badge.ok { background: rgba(20, 174, 92, 0.16); color: var(--accent); }
+      .badge.warn { background: rgba(242, 72, 34, 0.14); color: var(--err); }
+
+      .warn-note {
+        margin: 8px 0;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: rgba(242, 72, 34, 0.1);
+        color: var(--err);
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="selection">
+      <div id="selName">Nothing selected</div>
+      <div id="selMeta">Select a layer on the canvas.</div>
+    </div>
+
+    <label for="outputDir">Output folder</label>
+    <input id="outputDir" type="text" placeholder="/Users/you/Programming/my-repo/figma-export" />
+    <div class="hint">Absolute path to write into. Blank ⇒ the server's OUT_DIR.</div>
+
+    <label for="endpoint">Dev server endpoint</label>
+    <input id="endpoint" type="text" value="http://localhost:3579/sync" />
+
+    <label for="preview">Preview image</label>
+    <select id="preview">
+      <option value="SVG">SVG — vector, best for UI/simple art</option>
+      <option value="PNG">PNG — raster, safe for complex/heavy art</option>
+      <option value="NONE">None</option>
+    </select>
+    <div class="hint">Use PNG if SVG crashes on a vector-heavy node.</div>
+
+    <div class="row">
+      <input id="resolveRemote" type="checkbox" checked />
+      <label for="resolveRemote">Resolve remote library masters (import by key)</label>
+    </div>
+    <div class="hint">Pulls full definitions for components from other files. Needs those libraries published &amp; enabled here.</div>
+
+    <button id="export" disabled>Select a layer to export</button>
+    <div id="status"></div>
+    <div id="result"></div>
+
+    __UI_SCRIPT__
+  </body>
+</html>

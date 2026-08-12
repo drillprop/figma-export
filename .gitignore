@@ -1,0 +1,8 @@
+node_modules/
+
+# Generated plugin build outputs (run `pnpm build:plugin`)
+plugin/code.js
+plugin/ui.html
+
+*.log
+.DS_Store
