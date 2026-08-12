@@ -90,6 +90,16 @@ export interface AssetFile {
 export interface SyncResponse {
   ok?: boolean;
   path?: string;
+  /** Absolute path to the best preview file written (preview.html, else the raw
+   * preview.svg/.png), so the plugin's "Open preview" can point straight at it.
+   * Absent when no preview was produced. */
+  preview?: string;
+  error?: string;
+}
+
+/** Response from POST /open (server reveals a folder / opens a file in the OS). */
+export interface OpenResponse {
+  ok?: boolean;
   error?: string;
 }
 

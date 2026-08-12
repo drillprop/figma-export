@@ -6,6 +6,7 @@ import type {
   AssetFile,
   ExportPayload,
   ExportSummary,
+  OpenResponse,
   PickFolderResponse,
   PreviewFormat,
   SyncResponse,
@@ -167,10 +168,196 @@ function section(title: string, body: Node): HTMLElement {
   return el("div", { class: "section" }, [el("div", { class: "section-title", text: title }), body]);
 }
 
-function renderReport(s: ExportSummary, path: string): void {
+/** A paragraph mixing plain and bold runs (built as text nodes so a Figma layer
+ * name can't inject markup). */
+function plainLine(runs: { text: string; bold?: boolean }[]): HTMLElement {
+  const p = el("div", { class: "wrote-plain" });
+  for (const run of runs) {
+    p.appendChild(run.bold ? el("b", { text: run.text }) : document.createTextNode(run.text));
+  }
+  return p;
+}
+
+/** The plain-language "what was written" line, adapting to the Output choice. */
+function wroteLine(ctx: ReportContext, s: ExportSummary): HTMLElement {
+  const name = s.target.name;
+  if (ctx.outputMode === "single") {
+    return plainLine([
+      { text: "Saved your " },
+      { text: name, bold: true },
+      { text: " as a " },
+      { text: "single SVG file", bold: true },
+      { text: " — everything bundled into one file." },
+    ]);
+  }
+  const tail: string[] = [];
+  if (s.preview.produced) tail.push("a preview you can open");
+  const parts: string[] = [];
+  if (ctx.iconCount > 0) parts.push(`${ctx.iconCount} icon${ctx.iconCount === 1 ? "" : "s"}`);
+  if (ctx.imageCount > 0) parts.push(`${ctx.imageCount} image${ctx.imageCount === 1 ? "" : "s"}`);
+  if (parts.length) tail.push(`${parts.join(" and ")} as separate files`);
+  return plainLine([
+    { text: "Saved your " },
+    { text: name, bold: true },
+    { text: " as a " },
+    { text: "folder of assets", bold: true },
+    { text: tail.length ? ` — ${tail.join(", ")}.` : "." },
+  ]);
+}
+
+/** All of today's technical stats, softened, for the collapsed Details block. */
+function techDetail(s: ExportSummary): HTMLElement {
+  const wrap = el("div", { class: "more-body" });
+
+  const stats = el("div", { class: "stats" });
+  const tile = (val: string | number, label: string) =>
+    el("div", { class: "stat" }, [
+      el("div", { class: "stat-val", text: String(val) }),
+      el("div", { class: "stat-label", text: label }),
+    ]);
+  stats.appendChild(tile(s.totalNodes, "layers"));
+  stats.appendChild(
+    tile(s.components.total, `components · ${s.components.local} local / ${s.components.remote} linked`),
+  );
+  stats.appendChild(tile(s.textLayerCount, "text layers"));
+  const previewLabel = s.preview.skipped
+    ? "skipped"
+    : s.preview.produced
+      ? s.preview.format.toLowerCase()
+      : "none";
+  stats.appendChild(tile(previewLabel, "preview"));
+  wrap.appendChild(stats);
+
+  wrap.appendChild(section("Target", el("div", { text: `${s.target.name} · ${s.target.type}` })));
+
+  const types = Object.entries(s.nodeTypes)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+  const typeChips = el("div", { class: "chips" });
+  for (const [type, n] of types) typeChips.appendChild(chip(type, n));
+  wrap.appendChild(section("Layer types", typeChips));
+
+  if (s.sets.length) {
+    const setsWrap = el("div");
+    for (const set of s.sets) {
+      const setEl = el("div", { class: "set" }, [el("div", { class: "set-name", text: set.name })]);
+      for (const [key, values] of Object.entries(set.axes)) {
+        const chips = el("div", { class: "chips" });
+        for (const v of values) chips.appendChild(chip(v));
+        setEl.appendChild(
+          el("div", { class: "axis" }, [el("div", { class: "axis-key", text: key }), chips]),
+        );
+      }
+      setsWrap.appendChild(setEl);
+    }
+    wrap.appendChild(section(`Variant sets (${s.sets.length})`, setsWrap));
+  }
+
+  if (s.components.remote > 0) {
+    const linked = el("div");
+    const badges = el("div", { class: "chips" });
+    badges.appendChild(el("span", { class: "badge ok", text: `${s.remoteMastersResolved} loaded` }));
+    if (s.remoteMasterErrors.length) {
+      badges.appendChild(
+        el("span", { class: "badge warn", text: `${s.remoteMasterErrors.length} failed` }),
+      );
+    }
+    linked.appendChild(badges);
+
+    if (s.remoteMasterErrors.length) {
+      const list = el("div", { class: "unresolved-list" });
+      const shown = s.remoteMasterErrors.slice(0, 30);
+      for (const e of shown) {
+        list.appendChild(
+          el("div", { class: "error-item" }, [
+            el("span", { class: "error-name", text: e.name }),
+            el("span", { class: "error-msg", text: e.error }),
+          ]),
+        );
+      }
+      const extra = s.remoteMasterErrors.length - shown.length;
+      if (extra > 0) list.appendChild(el("div", { class: "error-msg", text: `+${extra} more…` }));
+      linked.appendChild(list);
+    }
+
+    wrap.appendChild(section("Linked components", linked));
+  }
+
+  if (s.textSamples.length) {
+    const list = el("div", { class: "samples" });
+    for (const t of s.textSamples) list.appendChild(el("div", { class: "sample", text: `“${t}”` }));
+    const extra = s.textLayerCount - s.textSamples.length;
+    if (extra > 0) list.appendChild(el("div", { class: "sample", text: `+${extra} more…` }));
+    wrap.appendChild(section("Text content", list));
+  }
+
+  return wrap;
+}
+
+/** Ask the server to reveal a folder / open a file (the plugin iframe can't). */
+async function openPath(target: string, trigger: HTMLButtonElement): Promise<void> {
+  const original = trigger.textContent;
+  trigger.disabled = true;
+  try {
+    const res = await fetch(`${serverBase()}/open`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: target }),
+    });
+    const body = (await res.json().catch(() => ({}))) as OpenResponse;
+    if (!res.ok) setStatus(body.error || "Could not open that.", "err");
+  } catch (err) {
+    setStatus(`Could not reach the server to open that.\n${String(err)}`, "err");
+  } finally {
+    trigger.disabled = false;
+    trigger.textContent = original;
+  }
+}
+
+/** Return to the ready state so another export can be started. */
+function resetToReady(): void {
   resultEl.textContent = "";
-  resultEl.appendChild(el("div", { class: "r-head" }, [el("span", { text: "✓ Export saved" })]));
-  resultEl.appendChild(el("div", { class: "r-path", text: path }));
+  resultEl.className = "";
+  setStatus("");
+  renderSelection();
+}
+
+/** What the calm receipt needs beyond the summary itself. */
+interface ReportContext {
+  path: string;
+  previewPath?: string;
+  outputMode: "folder" | "single";
+  iconCount: number;
+  imageCount: number;
+}
+
+function renderReport(s: ExportSummary, ctx: ReportContext): void {
+  resultEl.textContent = "";
+
+  // Headline.
+  resultEl.appendChild(
+    el("div", { class: "r-head" }, [el("span", { class: "r-tick", text: "✓" }), el("span", { text: "Export saved" })]),
+  );
+
+  // Destination — path + Open folder.
+  const openFolderBtn = el("button", { class: "mini", text: "Open folder" }) as HTMLButtonElement;
+  openFolderBtn.onclick = () => void openPath(ctx.path, openFolderBtn);
+  resultEl.appendChild(
+    el("div", { class: "dest" }, [el("div", { class: "r-path", text: ctx.path }), openFolderBtn]),
+  );
+
+  // Actions — Open preview (when one was written) · Export another.
+  const actions = el("div", { class: "actions" });
+  if (ctx.previewPath) {
+    const previewBtn = el("button", { class: "mini", text: "Open preview" }) as HTMLButtonElement;
+    const previewPath = ctx.previewPath;
+    previewBtn.onclick = () => void openPath(previewPath, previewBtn);
+    actions.appendChild(previewBtn);
+  }
+  const anotherBtn = el("button", { class: "mini", text: "Export another" }) as HTMLButtonElement;
+  anotherBtn.onclick = resetToReady;
+  actions.appendChild(anotherBtn);
+  resultEl.appendChild(actions);
 
   if (s.truncated) {
     resultEl.appendChild(
@@ -189,87 +376,17 @@ function renderReport(s: ExportSummary, path: string): void {
     );
   }
 
-  const stats = el("div", { class: "stats" });
-  const tile = (val: string | number, label: string) =>
-    el("div", { class: "stat" }, [
-      el("div", { class: "stat-val", text: String(val) }),
-      el("div", { class: "stat-label", text: label }),
-    ]);
-  stats.appendChild(tile(s.totalNodes, "nodes"));
-  stats.appendChild(
-    tile(s.components.total, `components · ${s.components.local} local / ${s.components.remote} remote`),
-  );
-  stats.appendChild(tile(s.textLayerCount, "text layers"));
-  const previewLabel = s.preview.skipped
-    ? "skipped"
-    : s.preview.produced
-      ? s.preview.format.toLowerCase()
-      : "none";
-  stats.appendChild(tile(previewLabel, "preview"));
-  resultEl.appendChild(stats);
+  // Plain-language summary.
+  resultEl.appendChild(wroteLine(ctx, s));
 
-  resultEl.appendChild(section("Target", el("div", { text: `${s.target.name} · ${s.target.type}` })));
-
-  const types = Object.entries(s.nodeTypes)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
-  const typeChips = el("div", { class: "chips" });
-  for (const [type, n] of types) typeChips.appendChild(chip(type, n));
-  resultEl.appendChild(section("Node types", typeChips));
-
-  if (s.sets.length) {
-    const wrap = el("div");
-    for (const set of s.sets) {
-      const setEl = el("div", { class: "set" }, [el("div", { class: "set-name", text: set.name })]);
-      for (const [key, values] of Object.entries(set.axes)) {
-        const chips = el("div", { class: "chips" });
-        for (const v of values) chips.appendChild(chip(v));
-        setEl.appendChild(
-          el("div", { class: "axis" }, [el("div", { class: "axis-key", text: key }), chips]),
-        );
-      }
-      wrap.appendChild(setEl);
-    }
-    resultEl.appendChild(section(`Variant sets (${s.sets.length})`, wrap));
-  }
-
-  if (s.components.remote > 0) {
-    const wrap = el("div");
-    const badges = el("div", { class: "chips" });
-    badges.appendChild(el("span", { class: "badge ok", text: `${s.remoteMastersResolved} resolved` }));
-    if (s.remoteMasterErrors.length) {
-      badges.appendChild(
-        el("span", { class: "badge warn", text: `${s.remoteMasterErrors.length} unresolved` }),
-      );
-    }
-    wrap.appendChild(badges);
-
-    if (s.remoteMasterErrors.length) {
-      const list = el("div", { class: "unresolved-list" });
-      const shown = s.remoteMasterErrors.slice(0, 30);
-      for (const e of shown) {
-        list.appendChild(
-          el("div", { class: "error-item" }, [
-            el("span", { class: "error-name", text: e.name }),
-            el("span", { class: "error-msg", text: e.error }),
-          ]),
-        );
-      }
-      const extra = s.remoteMasterErrors.length - shown.length;
-      if (extra > 0) list.appendChild(el("div", { class: "error-msg", text: `+${extra} more…` }));
-      wrap.appendChild(list);
-    }
-
-    resultEl.appendChild(section("Remote library masters", wrap));
-  }
-
-  if (s.textSamples.length) {
-    const list = el("div", { class: "samples" });
-    for (const t of s.textSamples) list.appendChild(el("div", { class: "sample", text: `“${t}”` }));
-    const extra = s.textLayerCount - s.textSamples.length;
-    if (extra > 0) list.appendChild(el("div", { class: "sample", text: `+${extra} more…` }));
-    resultEl.appendChild(section("Text content", list));
-  }
+  // Everything technical, collapsed by default.
+  const details = el("details", { class: "more" });
+  const summary = el("summary");
+  summary.appendChild(el("span", { class: "caret", text: "▸" }));
+  summary.appendChild(document.createTextNode("Details"));
+  details.appendChild(summary);
+  details.appendChild(techDetail(s));
+  resultEl.appendChild(details);
 
   resultEl.className = "show";
 }
@@ -408,17 +525,13 @@ window.onmessage = async (event: MessageEvent) => {
     const body = (await res.json().catch(() => ({}))) as SyncResponse;
     if (res.ok) {
       setStatus("");
-      renderReport(payload.summary, body.path || "written");
-      if (assets.length > 0) {
-        const parts = [`${imageCount} image(s)`, `${iconCount} icon(s)`];
-        const suffix = imageCount > 0 ? " · open preview.html to view" : "";
-        resultEl.appendChild(
-          el("div", {
-            class: "section",
-            text: `Extracted ${parts.join(" · ")} → preview.assets/${suffix}`,
-          }),
-        );
-      }
+      renderReport(payload.summary, {
+        path: body.path || "written",
+        previewPath: body.preview,
+        outputMode,
+        iconCount,
+        imageCount,
+      });
     } else {
       setStatus(`Server ${res.status}: ${body.error || "write failed"}`, "err");
     }

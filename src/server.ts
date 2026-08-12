@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { ExportPayload, PickFolderResponse, SyncResponse } from "./shared/types";
+import type { ExportPayload, OpenResponse, PickFolderResponse, SyncResponse } from "./shared/types";
 
 const execFileAsync = promisify(execFile);
 
@@ -82,6 +82,38 @@ app.get("/pick-folder", async (c) => {
       return c.json<PickFolderResponse>({ cancelled: true });
     }
     return c.json<PickFolderResponse>({ error: `Folder picker failed: ${detail.trim()}` }, 500);
+  }
+});
+
+/**
+ * Reveal a folder — or open a file (e.g. the written preview.html) — in the OS.
+ * Same rationale as /pick-folder: the plugin iframe has no filesystem/`open`
+ * access, so it asks the server (a real OS process) to do it. macOS only for now.
+ */
+app.post("/open", async (c) => {
+  if (process.platform !== "darwin") {
+    return c.json<OpenResponse>({ error: "Opening files is macOS-only so far." }, 501);
+  }
+  let target: string;
+  try {
+    const body = await c.req.json<{ path?: string }>();
+    target = (body.path ?? "").trim();
+  } catch {
+    return c.json<OpenResponse>({ error: "Invalid JSON body" }, 400);
+  }
+  if (!target || !path.isAbsolute(target)) {
+    return c.json<OpenResponse>({ error: "An absolute path is required" }, 400);
+  }
+  try {
+    await stat(target);
+  } catch {
+    return c.json<OpenResponse>({ error: `Path does not exist: ${target}` }, 404);
+  }
+  try {
+    await execFileAsync("open", [target]);
+    return c.json<OpenResponse>({ ok: true });
+  } catch (error) {
+    return c.json<OpenResponse>({ error: `Could not open: ${String(error)}` }, 500);
   }
 });
 
@@ -194,8 +226,22 @@ app.post("/sync", async (c) => {
         : Promise.resolve(),
     ]);
 
+    // Point "Open preview" at the richest preview written: the HTML wrapper if
+    // one was needed, else the raw SVG/PNG, else nothing.
+    const previewFile = needsPreviewHtml
+      ? "preview.html"
+      : typeof payload.svg === "string"
+        ? "preview.svg"
+        : typeof payload.png === "string"
+          ? "preview.png"
+          : null;
+
     console.log(`wrote ${payload.nodeName || payload.nodeId} → ${outDir}`);
-    return c.json<SyncResponse>({ ok: true, path: outDir });
+    return c.json<SyncResponse>({
+      ok: true,
+      path: outDir,
+      ...(previewFile ? { preview: path.join(outDir, previewFile) } : {}),
+    });
   } catch (error) {
     return c.json<SyncResponse>({ error: `Write failed: ${String(error)}` }, 500);
   }

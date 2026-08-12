@@ -168,18 +168,88 @@
       #result.show { display: block; }
       .r-head {
         display: flex;
-        align-items: baseline;
+        align-items: center;
         gap: 8px;
-        font-weight: 600;
+        font-weight: 700;
+        font-size: 14px;
         color: var(--accent);
       }
-      .r-path {
+      .r-tick {
+        flex: 0 0 auto;
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+      }
+
+      /* Destination: monospace path + Open folder action. */
+      .dest {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--card);
+      }
+      .dest .r-path {
+        flex: 1;
+        min-width: 0;
+        margin: 0;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 11px;
         color: var(--muted);
         word-break: break-all;
-        margin: 4px 0 12px;
       }
+
+      /* Receipt actions (Open preview · Export another). */
+      .actions { display: flex; gap: 6px; margin-top: 10px; }
+      .actions button { flex: 1; }
+      button.mini {
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--chip);
+        color: inherit;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      button.mini:disabled { opacity: 0.5; cursor: default; }
+
+      /* Plain-language "what was written" line. */
+      .wrote-plain { margin-top: 12px; }
+      .wrote-plain b { font-weight: 600; }
+
+      /* Details disclosure — technical stats, collapsed by default. */
+      details.more {
+        margin-top: 14px;
+        border-top: 1px solid var(--border);
+        padding-top: 12px;
+      }
+      details.more > summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+      details.more > summary::-webkit-details-marker { display: none; }
+      details.more > summary .caret { transition: transform 0.15s; }
+      details.more[open] > summary .caret { transform: rotate(90deg); }
+      .more-body { margin-top: 12px; }
       .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
       .stat {
         border: 1px solid var(--border);
