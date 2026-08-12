@@ -7,6 +7,7 @@ import type {
   ExportPayload,
   ExportSummary,
   PickFolderResponse,
+  PreviewFormat,
   SyncResponse,
 } from "../../src/shared/types";
 
@@ -39,16 +40,75 @@ const btn = byId<HTMLButtonElement>("export");
 const outputDirEl = byId<HTMLInputElement>("outputDir");
 const browseEl = byId<HTMLButtonElement>("browse");
 const endpointEl = byId<HTMLInputElement>("endpoint");
-const previewEl = byId<HTMLSelectElement>("preview");
-const libraryEl = byId<HTMLInputElement>("library");
+const skipPreviewEl = byId<HTMLButtonElement>("skipPreview");
 const resolveRemoteEl = byId<HTMLInputElement>("resolveRemote");
+const previewSegs = Array.from(
+  document.querySelectorAll<HTMLButtonElement>(".seg[data-preview]"),
+);
+const outputSegs = Array.from(
+  document.querySelectorAll<HTMLButtonElement>(".seg[data-output]"),
+);
 
 let selection: SelectionNode[] = [];
 let busy = false;
+// Preview: Vector (SVG) | Image (PNG), with Skip (NONE) as a quiet secondary.
+let previewFormat: PreviewFormat = "SVG";
+// Output: a folder of assets (library on) vs a single self-contained SVG file.
+let outputMode: "folder" | "single" = "folder";
 
 function setStatus(text: string, cls: "" | "err" | "progress" = ""): void {
   statusEl.textContent = text;
   statusEl.className = cls;
+}
+
+// --- segmented controls -------------------------------------------------
+function renderPreviewChoice(): void {
+  for (const seg of previewSegs) {
+    seg.setAttribute("aria-pressed", String(seg.dataset.preview === previewFormat));
+  }
+  const skipped = previewFormat === "NONE";
+  skipPreviewEl.classList.toggle("on", skipped);
+  skipPreviewEl.textContent = skipped ? "Preview skipped" : "Export without a preview";
+}
+
+for (const seg of previewSegs) {
+  seg.onclick = () => {
+    previewFormat = (seg.dataset.preview as PreviewFormat) ?? "SVG";
+    renderPreviewChoice();
+  };
+}
+skipPreviewEl.onclick = () => {
+  // Toggle skip; leaving skip returns to the default Vector preview.
+  previewFormat = previewFormat === "NONE" ? "SVG" : "NONE";
+  renderPreviewChoice();
+};
+
+function renderOutputChoice(): void {
+  for (const seg of outputSegs) {
+    seg.setAttribute("aria-pressed", String(seg.dataset.output === outputMode));
+  }
+}
+for (const seg of outputSegs) {
+  seg.onclick = () => {
+    outputMode = seg.dataset.output === "single" ? "single" : "folder";
+    renderOutputChoice();
+  };
+}
+
+renderPreviewChoice();
+renderOutputChoice();
+
+/** Friendly, jargon-free label for a Figma node type (e.g. "Component set"). */
+function typeLabel(type: string): string {
+  const known: Record<string, string> = {
+    COMPONENT_SET: "Component set",
+    COMPONENT: "Component",
+    INSTANCE: "Instance",
+    FRAME: "Frame",
+    GROUP: "Group",
+    SECTION: "Section",
+  };
+  return known[type] ?? type.charAt(0) + type.slice(1).toLowerCase().replace(/_/g, " ");
 }
 
 /** Pull raster images out of an SVG's inline data URIs into separate files, and
@@ -219,17 +279,21 @@ function renderSelection(): void {
   const first = selection[0];
   const selName = byId<HTMLDivElement>("selName");
   const selMeta = byId<HTMLDivElement>("selMeta");
+  const selThumb = byId<HTMLDivElement>("selThumb");
   if (!first) {
     selName.textContent = "Nothing selected";
     selMeta.textContent = "Select a layer on the canvas.";
+    selThumb.textContent = "–";
   } else {
     const extra = selection.length - 1;
     selName.textContent = first.name;
-    selMeta.textContent = first.type + (extra > 0 ? ` · +${extra} more (first is exported)` : "");
+    selMeta.textContent =
+      typeLabel(first.type) + (extra > 0 ? ` · +${extra} more (first is exported)` : "");
+    selThumb.textContent = (first.name.trim()[0] ?? "?").toUpperCase();
   }
   if (busy) return;
   btn.disabled = !first;
-  btn.textContent = first ? `Export “${first.name}”` : "Select a layer to export";
+  btn.textContent = first ? `Export “${first.name}”` : "Select something to export";
 }
 
 /** Derive the server base (e.g. http://localhost:3579) from the endpoint field. */
@@ -271,9 +335,9 @@ btn.onclick = () => {
     {
       pluginMessage: {
         type: "export",
-        preview: previewEl.value,
+        preview: previewFormat,
         resolveRemote: resolveRemoteEl.checked,
-        library: libraryEl.checked,
+        library: outputMode === "folder",
         outputDir: outputDirEl.value.trim(),
         endpoint: endpointEl.value.trim(),
       },

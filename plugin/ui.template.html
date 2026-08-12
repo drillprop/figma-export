@@ -5,72 +5,165 @@
     <style>
       :root {
         color-scheme: light dark;
-        --border: rgba(127, 127, 127, 0.25);
-        --muted: #888;
+        --bg: var(--figma-color-bg, #fff);
+        --text: var(--figma-color-text, #1a1a1a);
+        --muted: var(--figma-color-text-secondary, #888);
+        --border: var(--figma-color-border, rgba(127, 127, 127, 0.3));
+        --card: var(--figma-color-bg-secondary, rgba(127, 127, 127, 0.06));
         --chip: rgba(127, 127, 127, 0.14);
-        --card: rgba(127, 127, 127, 0.06);
+        --brand: var(--figma-color-bg-brand, #0d99ff);
+        --brand-text: var(--figma-color-text-onbrand, #fff);
         --accent: #14ae5c;
-        --err: #f24822;
+        --err: var(--figma-color-text-danger, #f24822);
       }
       * { box-sizing: border-box; }
       body {
         font: 12px/1.45 -apple-system, Segoe UI, sans-serif;
         margin: 0;
         padding: 16px;
+        background: var(--bg);
+        color: var(--text);
         overflow-y: auto;
       }
-      label { display: block; font-weight: 600; margin: 12px 0 4px; }
-      input[type="text"],
-      select {
+
+      /* Calm grouped blocks: a titled section per concern. */
+      .block { margin-bottom: 18px; }
+      .block-title {
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .block-hint { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+      input[type="text"] {
         width: 100%;
         padding: 8px;
-        border: 1px solid #999;
+        border: 1px solid var(--border);
         border-radius: 6px;
         font: inherit;
+        color: inherit;
         background: transparent;
       }
-      .row { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
-      .row label { margin: 0; font-weight: 400; }
-      .hint { color: var(--muted); font-size: 11px; margin-top: 2px; }
 
-      #selection {
+      /* 1 — Selection card */
+      .sel-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
         padding: 10px;
         border: 1px solid var(--border);
         border-radius: 8px;
         background: var(--card);
       }
+      .sel-thumb {
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        border-radius: 6px;
+        background: var(--chip);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .sel-info { min-width: 0; }
       #selName { font-weight: 600; word-break: break-word; }
       #selMeta { color: var(--muted); font-size: 11px; }
 
-      button {
-        margin-top: 16px;
+      /* 2 — Where it goes */
+      .field-row { display: flex; gap: 6px; align-items: stretch; }
+      .field-row input { flex: 1; }
+
+      /* 3 & 4 — segmented controls */
+      .segmented {
+        display: flex;
+        gap: 4px;
+        padding: 3px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--card);
+      }
+      .seg {
+        flex: 1;
+        padding: 7px 8px;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .seg[aria-pressed="true"] {
+        background: var(--brand);
+        color: var(--brand-text);
+        font-weight: 600;
+      }
+
+      /* 3 — Skip preview: a quiet secondary link, not an equal segment. */
+      .linklike {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--muted);
+        font: inherit;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      .linklike.on { color: var(--text); font-weight: 600; }
+
+      /* 5 — Options toggle */
+      .row { display: flex; align-items: center; gap: 8px; }
+      .row label { font-weight: 400; }
+      .row input { margin: 0; }
+
+      /* 6 — Connection, visually demoted */
+      .block.quiet .block-title { color: var(--muted); }
+      .block.quiet input[type="text"] {
+        font-size: 11px;
+        color: var(--muted);
+        padding: 6px 8px;
+      }
+
+      /* 7 — Export */
+      #export {
         width: 100%;
         padding: 10px;
         border: 0;
         border-radius: 6px;
-        background: #0d99ff;
-        color: #fff;
+        background: var(--brand);
+        color: var(--brand-text);
         font: inherit;
         font-weight: 600;
         cursor: pointer;
       }
-      button:disabled { opacity: 0.5; cursor: default; }
+      #export:disabled { opacity: 0.5; cursor: default; }
 
-      .field-row { display: flex; gap: 6px; align-items: stretch; }
-      .field-row input { flex: 1; }
       button.secondary {
-        margin-top: 0;
         width: auto;
         white-space: nowrap;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
         background: var(--chip);
         color: inherit;
-        border: 1px solid var(--border);
+        font: inherit;
+        cursor: pointer;
       }
+      button.secondary:disabled { opacity: 0.5; cursor: default; }
 
       #status { margin-top: 12px; white-space: pre-wrap; word-break: break-word; }
       #status.err { color: var(--err); }
       #status.progress { color: var(--muted); }
 
+      /* Success report (rendered by the UI script). */
       #result { margin-top: 12px; display: none; }
       #result.show { display: block; }
       .r-head {
@@ -151,42 +244,67 @@
     </style>
   </head>
   <body>
-    <div id="selection">
-      <div id="selName">Nothing selected</div>
-      <div id="selMeta">Select a layer on the canvas.</div>
-    </div>
+    <!-- 1 — Selection -->
+    <section class="block">
+      <div class="block-title">Selection</div>
+      <div id="selection" class="sel-card">
+        <div id="selThumb" class="sel-thumb" aria-hidden="true">–</div>
+        <div class="sel-info">
+          <div id="selName">Nothing selected</div>
+          <div id="selMeta">Select a layer on the canvas.</div>
+        </div>
+      </div>
+    </section>
 
-    <label for="outputDir">Output folder</label>
-    <div class="field-row">
-      <input id="outputDir" type="text" placeholder="/Users/you/Programming/my-repo/figma-export" />
-      <button type="button" id="browse" class="secondary">Browse…</button>
-    </div>
-    <div class="hint">Absolute path to write into. Blank ⇒ the server's OUT_DIR.</div>
+    <!-- 2 — Where it goes -->
+    <section class="block">
+      <div class="block-title">Where it goes</div>
+      <div class="field-row">
+        <input id="outputDir" type="text" placeholder="/Users/you/Programming/my-repo/figma-export" />
+        <button type="button" id="browse" class="secondary">Browse…</button>
+      </div>
+      <div class="block-hint">Absolute path to write into. Leave blank to use the server's default folder.</div>
+    </section>
 
-    <label for="endpoint">Dev server endpoint</label>
-    <input id="endpoint" type="text" value="http://localhost:3579/sync" />
+    <!-- 3 — Preview image -->
+    <section class="block">
+      <div class="block-title">Preview image</div>
+      <div class="segmented" role="group" aria-label="Preview image format">
+        <button type="button" class="seg" data-preview="SVG" aria-pressed="true">Vector</button>
+        <button type="button" class="seg" data-preview="PNG" aria-pressed="false">Image</button>
+      </div>
+      <button type="button" id="skipPreview" class="linklike">Export without a preview</button>
+      <div class="block-hint">Vector stays crisp for icons and UI. Switch to Image if a vector-heavy layer won't preview.</div>
+    </section>
 
-    <label for="preview">Preview image</label>
-    <select id="preview">
-      <option value="SVG">SVG — vector, best for UI/simple art</option>
-      <option value="PNG">PNG — raster, safe for complex/heavy art</option>
-      <option value="NONE">None</option>
-    </select>
-    <div class="hint">Use PNG if SVG crashes on a vector-heavy node.</div>
+    <!-- 4 — Output -->
+    <section class="block">
+      <div class="block-title">Output</div>
+      <div class="segmented" role="group" aria-label="Output format">
+        <button type="button" class="seg" data-output="folder" aria-pressed="true">Folder of assets</button>
+        <button type="button" class="seg" data-output="single" aria-pressed="false">Single SVG file</button>
+      </div>
+      <div class="block-hint">A folder keeps images and icons as separate files. A single file bundles everything into one SVG.</div>
+    </section>
 
-    <div class="row">
-      <input id="library" type="checkbox" checked />
-      <label for="library">Export typed asset library</label>
-    </div>
-    <div class="hint">Writes assets to preview.assets/: raster images pulled out of the SVG (keeping it small) plus vector icon components as .svg. When images are extracted, a preview.html is written to view them — open that, not preview.svg. Uncheck for a single self-contained SVG with inline images.</div>
+    <!-- 5 — Options -->
+    <section class="block">
+      <div class="block-title">Options</div>
+      <div class="row">
+        <input id="resolveRemote" type="checkbox" checked />
+        <label for="resolveRemote">Include components from other files</label>
+      </div>
+      <div class="block-hint">Also saves the full definition of components that live in other files.</div>
+    </section>
 
-    <div class="row">
-      <input id="resolveRemote" type="checkbox" checked />
-      <label for="resolveRemote">Resolve remote library masters (import by key)</label>
-    </div>
-    <div class="hint">Pulls full definitions for components from other files. Needs those libraries published &amp; enabled here.</div>
+    <!-- 6 — Connection -->
+    <section class="block quiet">
+      <div class="block-title">Connection</div>
+      <input id="endpoint" type="text" value="http://localhost:3579/sync" />
+    </section>
 
-    <button id="export" disabled>Select a layer to export</button>
+    <!-- 7 — Export -->
+    <button type="button" id="export" disabled>Select something to export</button>
     <div id="status"></div>
     <div id="result"></div>
 
