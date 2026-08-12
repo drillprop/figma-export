@@ -38,6 +38,7 @@ const outputDirEl = byId<HTMLInputElement>("outputDir");
 const browseEl = byId<HTMLButtonElement>("browse");
 const endpointEl = byId<HTMLInputElement>("endpoint");
 const previewEl = byId<HTMLSelectElement>("preview");
+const externalizeSvgEl = byId<HTMLInputElement>("externalizeSvg");
 const resolveRemoteEl = byId<HTMLInputElement>("resolveRemote");
 
 let selection: SelectionNode[] = [];
@@ -308,11 +309,17 @@ window.onmessage = async (event: MessageEvent) => {
   let assetCount = 0;
   if (msg.svgBytes) {
     const raw = new TextDecoder().decode(msg.svgBytes);
-    const { svg, assets } = externalizeSvgImages(raw);
-    payload.svg = svg;
-    if (assets.length) {
-      payload.svgAssets = assets;
-      assetCount = assets.length;
+    // Default: keep images inline (self-contained SVG that renders anywhere).
+    // Opt-in externalization trades that for small, diff-friendly files.
+    if (externalizeSvgEl.checked) {
+      const { svg, assets } = externalizeSvgImages(raw);
+      payload.svg = svg;
+      if (assets.length) {
+        payload.svgAssets = assets;
+        assetCount = assets.length;
+      }
+    } else {
+      payload.svg = raw;
     }
   }
   if (msg.pngBytes) payload.png = bytesToBase64(msg.pngBytes);

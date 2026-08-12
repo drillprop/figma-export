@@ -57,11 +57,14 @@ and pick `plugin/manifest.json`.
      preview.assets/      images pulled out of the SVG (see below)
    ```
 
-   When the preview is **SVG**, any raster images Figma would inline as huge
-   `data:…;base64` blobs are instead written as real files under
-   `preview.assets/` and referenced from the SVG (`href="preview.assets/img-0.png"`),
-   so the committed SVG stays small and diff-friendly. Pure-vector nodes produce
-   no assets.
+   By default the **SVG** preview keeps images inline (base64), so it's
+   self-contained and renders anywhere. Tick **Extract SVG images to files** to
+   instead write the raster fills under `preview.assets/` and reference them from
+   the SVG (`href="preview.assets/img-0.png"`) — smaller, diff-friendly files.
+   Note: an SVG with *external* image refs only renders when served over http or
+   inlined into HTML; opened as a plain `file://` or used as `<img>`, browsers
+   block the external images (security "secure static mode"). Pure-vector nodes
+   produce no assets either way.
 
 The path you give is the exact base; want a `figma-export/` subfolder? Include
 it in the path. The server refuses to write if the folder doesn't exist.
