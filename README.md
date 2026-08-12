@@ -54,17 +54,19 @@ and pick `plugin/manifest.json`.
      meta.json           ids, timestamp, and the summary
      remote-masters.json resolved library-component definitions (if any)
      preview.svg | .png   visual reference
+     preview.html         open this to view an externalized SVG (see below)
      preview.assets/      images pulled out of the SVG (see below)
    ```
 
-   By default the **SVG** preview keeps images inline (base64), so it's
-   self-contained and renders anywhere. Tick **Extract SVG images to files** to
-   instead write the raster fills under `preview.assets/` and reference them from
-   the SVG (`href="preview.assets/img-0.png"`) — smaller, diff-friendly files.
-   Note: an SVG with *external* image refs only renders when served over http or
-   inlined into HTML; opened as a plain `file://` or used as `<img>`, browsers
-   block the external images (security "secure static mode"). Pure-vector nodes
-   produce no assets either way.
+   **SVG preview & images.** With **Extract SVG images to files** on (default),
+   the raster fills are written under `preview.assets/` and referenced from the
+   SVG (`href="preview.assets/img-0.png"`) — no base64, so the committed `.svg`
+   stays small and diff-friendly. Because a browser blocks external images when
+   an SVG is opened as a plain `file://` or `<img>` ("secure static mode"), the
+   server also writes **`preview.html`** with the SVG inlined — open that to see
+   the images render. Uncheck the option for a single self-contained SVG with
+   inline base64 that previews anywhere. Pure-vector nodes produce no assets
+   either way.
 
 The path you give is the exact base; want a `figma-export/` subfolder? Include
 it in the path. The server refuses to write if the folder doesn't exist.

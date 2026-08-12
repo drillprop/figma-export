@@ -175,10 +175,10 @@
     <div class="hint">Use PNG if SVG crashes on a vector-heavy node.</div>
 
     <div class="row">
-      <input id="externalizeSvg" type="checkbox" />
+      <input id="externalizeSvg" type="checkbox" checked />
       <label for="externalizeSvg">Extract SVG images to files</label>
     </div>
-    <div class="hint">Smaller, diff-friendly SVG — but images then only render when the SVG is served over http or inlined in HTML, not as a plain file or &lt;img&gt;. Leave off for a self-contained SVG that previews anywhere.</div>
+    <div class="hint">No base64: images go to preview.assets/ and a preview.html is written to view them (open that, not preview.svg). Uncheck for a single self-contained SVG with inline images.</div>
 
     <div class="row">
       <input id="resolveRemote" type="checkbox" checked />

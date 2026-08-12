@@ -339,7 +339,7 @@ window.onmessage = async (event: MessageEvent) => {
         resultEl.appendChild(
           el("div", {
             class: "section",
-            text: `Extracted ${assetCount} embedded image(s) → preview.assets/`,
+            text: `Extracted ${assetCount} image(s) → preview.assets/ · open preview.html to view`,
           }),
         );
       }
