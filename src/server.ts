@@ -126,6 +126,13 @@ app.post("/sync", async (c) => {
   try {
     await mkdir(outDir, { recursive: true });
 
+    const assets = payload.assets ?? [];
+    const assetSvgCount = assets.filter((a) => a.name.endsWith(".svg")).length;
+    // The SVG references extracted images only when they were externalized, in
+    // which case it needs the HTML wrapper to render them from file://.
+    const needsPreviewHtml =
+      typeof payload.svg === "string" && payload.svg.includes("preview.assets/");
+
     const meta = {
       fileKey: payload.fileKey ?? null,
       fileName: payload.fileName ?? null,
@@ -136,27 +143,33 @@ app.post("/sync", async (c) => {
       remoteMasterCount: payload.remoteMasters?.length ?? 0,
       hasSvg: typeof payload.svg === "string",
       hasPng: typeof payload.png === "string",
-      svgAssetCount: payload.svgAssets?.length ?? 0,
-      hasPreviewHtml: (payload.svgAssets?.length ?? 0) > 0 && typeof payload.svg === "string",
+      assetCount: assets.length,
+      assetImageCount: assets.length - assetSvgCount,
+      assetSvgCount,
+      hasPreviewHtml: needsPreviewHtml,
       summary: payload.summary ?? null,
     };
 
     const hasRemoteMasters = (payload.remoteMasters?.length ?? 0) > 0;
 
-    // Externalized SVG: write the extracted images, plus a preview.html that
-    // inlines the SVG so the (external) images actually render from file://.
-    const svgAssets = payload.svgAssets ?? [];
-    if (svgAssets.length > 0 && typeof payload.svg === "string") {
+    // preview.assets/: raster images pulled out of the SVG + vector icon SVGs.
+    // Plus a preview.html that inlines the (external-ref) SVG so images render.
+    if (assets.length > 0) {
       const assetsDir = path.join(outDir, "preview.assets");
       await mkdir(assetsDir, { recursive: true });
       await Promise.all([
-        ...svgAssets.map((asset) =>
-          writeFile(path.join(assetsDir, slug(asset.name, "img")), Buffer.from(asset.base64, "base64")),
+        ...assets.map((asset) =>
+          writeFile(
+            path.join(assetsDir, slug(asset.name, "asset")),
+            Buffer.from(asset.base64, "base64"),
+          ),
         ),
-        writeFile(
-          path.join(outDir, "preview.html"),
-          previewHtml(payload.nodeName || payload.nodeId || "preview", payload.svg),
-        ),
+        needsPreviewHtml
+          ? writeFile(
+              path.join(outDir, "preview.html"),
+              previewHtml(payload.nodeName || payload.nodeId || "preview", payload.svg as string),
+            )
+          : Promise.resolve(),
       ]);
     }
 

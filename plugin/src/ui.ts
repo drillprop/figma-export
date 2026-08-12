@@ -3,10 +3,10 @@
 // POSTs it to the local figma-export server (the sandbox main thread has no
 // `fetch`; only this iframe does).
 import type {
+  AssetFile,
   ExportPayload,
   ExportSummary,
   PickFolderResponse,
-  SvgAsset,
   SyncResponse,
 } from "../../src/shared/types";
 
@@ -27,6 +27,8 @@ type FromPlugin =
       payload: ExportPayload;
       svgBytes: Uint8Array | null;
       pngBytes: Uint8Array | null;
+      icons: { name: string; bytes: Uint8Array }[];
+      library: boolean;
     };
 
 const byId = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -38,7 +40,7 @@ const outputDirEl = byId<HTMLInputElement>("outputDir");
 const browseEl = byId<HTMLButtonElement>("browse");
 const endpointEl = byId<HTMLInputElement>("endpoint");
 const previewEl = byId<HTMLSelectElement>("preview");
-const externalizeSvgEl = byId<HTMLInputElement>("externalizeSvg");
+const libraryEl = byId<HTMLInputElement>("library");
 const resolveRemoteEl = byId<HTMLInputElement>("resolveRemote");
 
 let selection: SelectionNode[] = [];
@@ -52,8 +54,8 @@ function setStatus(text: string, cls: "" | "err" | "progress" = ""): void {
 /** Pull raster images out of an SVG's inline data URIs into separate files, and
  * rewrite the references to point at `preview.assets/<name>`. Identical images
  * are deduped to one file. Pure-vector SVGs return unchanged with no assets. */
-function externalizeSvgImages(svg: string): { svg: string; assets: SvgAsset[] } {
-  const assets: SvgAsset[] = [];
+function externalizeSvgImages(svg: string): { svg: string; assets: AssetFile[] } {
+  const assets: AssetFile[] = [];
   const byData = new Map<string, string>(); // base64 data -> file name
   const extFor = (mime: string): string =>
     mime === "image/jpeg" ? "jpg" : mime === "image/gif" ? "gif" : mime === "image/png" ? "png" : "bin";
@@ -271,6 +273,7 @@ btn.onclick = () => {
         type: "export",
         preview: previewEl.value,
         resolveRemote: resolveRemoteEl.checked,
+        library: libraryEl.checked,
         outputDir: outputDirEl.value.trim(),
         endpoint: endpointEl.value.trim(),
       },
@@ -306,23 +309,30 @@ window.onmessage = async (event: MessageEvent) => {
   if (msg.type !== "result") return;
 
   const payload = msg.payload;
-  let assetCount = 0;
+  const assets: AssetFile[] = [];
+
   if (msg.svgBytes) {
     const raw = new TextDecoder().decode(msg.svgBytes);
-    // Default: keep images inline (self-contained SVG that renders anywhere).
-    // Opt-in externalization trades that for small, diff-friendly files.
-    if (externalizeSvgEl.checked) {
-      const { svg, assets } = externalizeSvgImages(raw);
+    // With the library on, pull raster images out to files (small SVG + a
+    // preview.html wrapper on the server side); otherwise keep it self-contained.
+    if (msg.library) {
+      const { svg, assets: images } = externalizeSvgImages(raw);
       payload.svg = svg;
-      if (assets.length) {
-        payload.svgAssets = assets;
-        assetCount = assets.length;
-      }
+      assets.push(...images);
     } else {
       payload.svg = raw;
     }
   }
   if (msg.pngBytes) payload.png = bytesToBase64(msg.pngBytes);
+
+  // Vector icons from the node-walk share the same preview.assets/ folder.
+  for (const icon of msg.icons ?? []) {
+    assets.push({ name: icon.name, base64: bytesToBase64(icon.bytes) });
+  }
+  if (assets.length) payload.assets = assets;
+
+  const iconCount = assets.filter((a) => a.name.endsWith(".svg")).length;
+  const imageCount = assets.length - iconCount;
 
   setStatus("Sending to server…", "progress");
   try {
@@ -335,11 +345,13 @@ window.onmessage = async (event: MessageEvent) => {
     if (res.ok) {
       setStatus("");
       renderReport(payload.summary, body.path || "written");
-      if (assetCount > 0) {
+      if (assets.length > 0) {
+        const parts = [`${imageCount} image(s)`, `${iconCount} icon(s)`];
+        const suffix = imageCount > 0 ? " · open preview.html to view" : "";
         resultEl.appendChild(
           el("div", {
             class: "section",
-            text: `Extracted ${assetCount} image(s) → preview.assets/ · open preview.html to view`,
+            text: `Extracted ${parts.join(" · ")} → preview.assets/${suffix}`,
           }),
         );
       }
