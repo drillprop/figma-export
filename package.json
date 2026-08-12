@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.12.0",
+    "@clack/prompts": "^1.7.0",
     "@figma/plugin-typings": "^1.100.0",
     "@types/node": "^22.10.2",
     "esbuild": "^0.24.2",
