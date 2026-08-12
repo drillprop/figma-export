@@ -1,0 +1,192 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Ticket #8 (De-jargon the two export-mode toggles).
+  Shape already decided (#8): asset-library => 2-way OUTPUT choice; remote-masters => stays a
+  plain-labelled toggle. This prototype is only about the WORDING. Three copy takes: ?copy=1|2|3
+  or the bottom bar / arrow keys. Toggle light/dark with ☾/☀. Open the file directly in a browser.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Prototype — toggle copy (#8)</title>
+    <style>
+      :root {
+        --figma-color-bg: #ffffff; --figma-color-bg-secondary: #f5f5f5;
+        --figma-color-bg-brand: #0d99ff; --figma-color-bg-success: #14ae5c;
+        --figma-color-text: #1a1a1a; --figma-color-text-secondary: #7a7a7a;
+        --figma-color-border: rgba(0,0,0,0.1); --figma-color-border-strong: rgba(0,0,0,0.3);
+      }
+      body.dark {
+        --figma-color-bg: #2c2c2c; --figma-color-bg-secondary: #383838;
+        --figma-color-bg-brand: #0d99ff; --figma-color-bg-success: #14ae5c;
+        --figma-color-text: #fff; --figma-color-text-secondary: #9c9c9c;
+        --figma-color-border: rgba(255,255,255,0.12); --figma-color-border-strong: rgba(255,255,255,0.35);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; font-family: Inter, -apple-system, "Segoe UI", sans-serif;
+        background: #6b6b6b; display: flex; justify-content: center; align-items: flex-start;
+        padding: 40px 16px 96px; min-height: 100vh;
+      }
+      .panel {
+        width: 340px; background: var(--figma-color-bg); color: var(--figma-color-text);
+        border-radius: 8px; box-shadow: 0 12px 40px rgba(0,0,0,.45); overflow: hidden;
+        font-size: 11px; line-height: 16px;
+      }
+      .inner { padding: 12px; }
+      .block { margin-top: 16px; }
+      .block:first-child { margin-top: 0; }
+      .blocktitle {
+        font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+        color: var(--figma-color-text-secondary); margin-bottom: 8px;
+      }
+      .selcard {
+        display: flex; gap: 8px; align-items: center; padding: 10px;
+        border: 1px solid var(--figma-color-border); border-radius: 6px; background: var(--figma-color-bg-secondary);
+      }
+      .thumb {
+        width: 32px; height: 32px; border-radius: 4px; flex: none;
+        background: linear-gradient(135deg,#7b61ff,#0d99ff);
+        display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px;
+      }
+      .name { font-weight: 600; font-size: 12px; }
+      .meta { color: var(--figma-color-text-secondary); font-size: 11px; }
+      .segrow { display: flex; gap: 4px; }
+      .seg {
+        flex: 1; text-align: center; padding: 7px 4px; border-radius: 4px; cursor: pointer; font-size: 11px;
+        border: 1px solid var(--figma-color-border); background: var(--figma-color-bg); font-weight: 600;
+      }
+      .seg.on { background: var(--figma-color-bg-brand); color: #fff; border-color: var(--figma-color-bg-brand); }
+      .helper { color: var(--figma-color-text-secondary); font-size: 11px; margin-top: 6px; }
+      .checkrow { display: flex; gap: 8px; align-items: flex-start; }
+      .checkrow input { margin: 1px 0 0; }
+      .clabel { font-weight: 600; font-size: 11px; }
+      .btn {
+        height: 32px; width: 100%; border: 0; border-radius: 6px; margin-top: 18px;
+        background: var(--figma-color-bg-brand); color: #fff; font-weight: 600; font-size: 12px; cursor: pointer;
+      }
+      code { font-family: ui-monospace, Menlo, monospace; font-size: 10px; }
+      .switcher {
+        position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+        display: flex; align-items: center; gap: 4px; z-index: 9;
+        background: #111; color: #fff; border-radius: 999px; padding: 6px 8px;
+        box-shadow: 0 6px 24px rgba(0,0,0,.5); font-size: 12px;
+      }
+      .switcher button { background: #2a2a2a; color: #fff; border: 0; border-radius: 999px; width: 26px; height: 26px; cursor: pointer; font-size: 14px; }
+      .switcher .vlabel { padding: 0 8px; min-width: 230px; text-align: center; font-weight: 600; }
+      .switcher .sep { width: 1px; height: 18px; background: #444; margin: 0 2px; }
+      .switcher .theme { width: auto; padding: 0 10px; }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <div class="inner">
+        <div class="block">
+          <div class="selcard">
+            <div class="thumb">◈</div>
+            <div>
+              <div class="name">Button / Primary</div>
+              <div class="meta">Component set · 4 variants</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="block">
+          <div class="blocktitle" id="out-title">Output</div>
+          <div class="segrow">
+            <div class="seg on" id="seg-a"></div>
+            <div class="seg" id="seg-b"></div>
+          </div>
+          <div class="helper" id="out-help"></div>
+        </div>
+
+        <div class="block">
+          <div class="blocktitle" id="opt-title">Options</div>
+          <div class="checkrow">
+            <input type="checkbox" id="remote" checked />
+            <div>
+              <label class="clabel" for="remote" id="remote-label"></label>
+              <div class="helper" id="remote-help" style="margin-top: 3px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn">Export to folder</button>
+      </div>
+    </div>
+
+    <div class="switcher">
+      <button onclick="cycle(-1)">‹</button>
+      <span class="vlabel" id="vlabel"></span>
+      <button onclick="cycle(1)">›</button>
+      <span class="sep"></span>
+      <button class="theme" onclick="toggleTheme()" id="themebtn">☾ dark</button>
+    </div>
+
+    <script>
+      // Three copy takes. All say the same true thing; they differ in voice.
+      const COPY = {
+        "1": {
+          name: "Plain & friendly",
+          outTitle: "Output",
+          segA: "Folder of assets", segB: "Single SVG file",
+          outHelp: "Images and icons are saved as separate files, with a <code>preview.html</code> to open them.",
+          optTitle: "Options",
+          remoteLabel: "Include components from other files",
+          remoteHelp: "Pulls in the full design of anything linked from another Figma library. Off = faster, but linked parts come out incomplete.",
+        },
+        "2": {
+          name: "Task-oriented",
+          outTitle: "How to save assets",
+          segA: "Separate files", segB: "One SVG",
+          outHelp: "“Separate files” keeps the SVG small and writes a <code>preview.html</code> to view the extracted images & icons.",
+          optTitle: "Include",
+          remoteLabel: "Linked library components",
+          remoteHelp: "Fetch the full design of components used from other files. Leave on unless you only need this file’s own layers.",
+        },
+        "3": {
+          name: "Outcome-first",
+          outTitle: "Result",
+          segA: "Folder + preview", segB: "Just one file",
+          outHelp: "A folder you can browse: small SVG, extracted images & icons, and a <code>preview.html</code> index.",
+          optTitle: "Options",
+          remoteLabel: "Bring in components from other Figma files",
+          remoteHelp: "So nothing linked from another library is left as an empty placeholder.",
+        },
+      };
+      const KEYS = ["1", "2", "3"];
+      function cur() {
+        const c = new URLSearchParams(location.search).get("copy");
+        return KEYS.includes(c) ? c : "1";
+      }
+      function render() {
+        const c = COPY[cur()];
+        document.getElementById("out-title").textContent = c.outTitle;
+        document.getElementById("seg-a").textContent = c.segA;
+        document.getElementById("seg-b").textContent = c.segB;
+        document.getElementById("out-help").innerHTML = c.outHelp;
+        document.getElementById("opt-title").textContent = c.optTitle;
+        document.getElementById("remote-label").textContent = c.remoteLabel;
+        document.getElementById("remote-help").innerHTML = c.remoteHelp;
+        document.getElementById("vlabel").textContent = `Copy ${cur()} — ${c.name}`;
+      }
+      function cycle(d) {
+        const i = KEYS.indexOf(cur());
+        const next = KEYS[(i + d + KEYS.length) % KEYS.length];
+        const u = new URL(location); u.searchParams.set("copy", next); history.replaceState(null, "", u);
+        render();
+      }
+      function toggleTheme() {
+        document.body.classList.toggle("dark");
+        document.getElementById("themebtn").textContent = document.body.classList.contains("dark") ? "☀ light" : "☾ dark";
+      }
+      document.addEventListener("keydown", (e) => {
+        const t = e.target;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        if (e.key === "ArrowLeft") cycle(-1);
+        if (e.key === "ArrowRight") cycle(1);
+      });
+      render();
+    </script>
+  </body>
+</html>
