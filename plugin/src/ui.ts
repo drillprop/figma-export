@@ -3,6 +3,7 @@
 // POSTs it to the local figma-export server (the sandbox main thread has no
 // `fetch`; only this iframe does).
 import type {
+  AssetFile,
   ExportPayload,
   ExportSummary,
   PickFolderResponse,
@@ -26,7 +27,8 @@ type FromPlugin =
       payload: ExportPayload;
       svgBytes: Uint8Array | null;
       pngBytes: Uint8Array | null;
-      assets: { name: string; kind: "png" | "svg"; bytes: Uint8Array }[];
+      icons: { name: string; bytes: Uint8Array }[];
+      library: boolean;
     };
 
 const byId = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -47,6 +49,28 @@ let busy = false;
 function setStatus(text: string, cls: "" | "err" | "progress" = ""): void {
   statusEl.textContent = text;
   statusEl.className = cls;
+}
+
+/** Pull raster images out of an SVG's inline data URIs into separate files, and
+ * rewrite the references to point at `preview.assets/<name>`. Identical images
+ * are deduped to one file. Pure-vector SVGs return unchanged with no assets. */
+function externalizeSvgImages(svg: string): { svg: string; assets: AssetFile[] } {
+  const assets: AssetFile[] = [];
+  const byData = new Map<string, string>(); // base64 data -> file name
+  const extFor = (mime: string): string =>
+    mime === "image/jpeg" ? "jpg" : mime === "image/gif" ? "gif" : mime === "image/png" ? "png" : "bin";
+
+  const pattern = /(xlink:href|href)="data:(image\/[a-zA-Z0-9.+-]+);base64,([^"]+)"/g;
+  const out = svg.replace(pattern, (_match, attr: string, mime: string, data: string) => {
+    let name = byData.get(data);
+    if (!name) {
+      name = `img-${assets.length}.${extFor(mime)}`;
+      byData.set(data, name);
+      assets.push({ name, base64: data });
+    }
+    return `${attr}="preview.assets/${name}"`;
+  });
+  return { svg: out, assets };
 }
 
 /** Encode bytes to base64 in chunks (avoids call-stack limits on big PNGs). */
@@ -285,21 +309,30 @@ window.onmessage = async (event: MessageEvent) => {
   if (msg.type !== "result") return;
 
   const payload = msg.payload;
-  // Whole-node preview stays self-contained (images inline). The typed asset
-  // library owns preview.assets/ instead.
-  if (msg.svgBytes) payload.svg = new TextDecoder().decode(msg.svgBytes);
+  const assets: AssetFile[] = [];
+
+  if (msg.svgBytes) {
+    const raw = new TextDecoder().decode(msg.svgBytes);
+    // With the library on, pull raster images out to files (small SVG + a
+    // preview.html wrapper on the server side); otherwise keep it self-contained.
+    if (msg.library) {
+      const { svg, assets: images } = externalizeSvgImages(raw);
+      payload.svg = svg;
+      assets.push(...images);
+    } else {
+      payload.svg = raw;
+    }
+  }
   if (msg.pngBytes) payload.png = bytesToBase64(msg.pngBytes);
 
-  const assets = msg.assets ?? [];
-  if (assets.length) {
-    payload.assets = assets.map((a) => ({
-      name: a.name,
-      kind: a.kind,
-      base64: bytesToBase64(a.bytes),
-    }));
+  // Vector icons from the node-walk share the same preview.assets/ folder.
+  for (const icon of msg.icons ?? []) {
+    assets.push({ name: icon.name, base64: bytesToBase64(icon.bytes) });
   }
-  const pngCount = assets.filter((a) => a.kind === "png").length;
-  const svgCount = assets.length - pngCount;
+  if (assets.length) payload.assets = assets;
+
+  const iconCount = assets.filter((a) => a.name.endsWith(".svg")).length;
+  const imageCount = assets.length - iconCount;
 
   setStatus("Sending to server…", "progress");
   try {
@@ -313,10 +346,12 @@ window.onmessage = async (event: MessageEvent) => {
       setStatus("");
       renderReport(payload.summary, body.path || "written");
       if (assets.length > 0) {
+        const parts = [`${imageCount} image(s)`, `${iconCount} icon(s)`];
+        const suffix = imageCount > 0 ? " · open preview.html to view" : "";
         resultEl.appendChild(
           el("div", {
             class: "section",
-            text: `Extracted ${assets.length} asset(s) → preview.assets/ · ${pngCount} png · ${svgCount} svg`,
+            text: `Extracted ${parts.join(" · ")} → preview.assets/${suffix}`,
           }),
         );
       }

@@ -178,7 +178,7 @@
       <input id="library" type="checkbox" checked />
       <label for="library">Export typed asset library</label>
     </div>
-    <div class="hint">Writes each asset to preview.assets/ with the right type: raster images as .png, vector icon components as .svg. Independent of the preview above.</div>
+    <div class="hint">Writes assets to preview.assets/: raster images pulled out of the SVG (keeping it small) plus vector icon components as .svg. When images are extracted, a preview.html is written to view them — open that, not preview.svg. Uncheck for a single self-contained SVG with inline images.</div>
 
     <div class="row">
       <input id="resolveRemote" type="checkbox" checked />

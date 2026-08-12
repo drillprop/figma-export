@@ -266,14 +266,14 @@ function pngSettings(node: AnyNode): ExportSettings {
   return { format: "PNG", constraint: { type: "SCALE", value: 2 } };
 }
 
-// --- typed asset library ------------------------------------------------
+// --- icon library -------------------------------------------------------
+// Raster images are handled by externalizing the SVG preview (in the UI); this
+// walk extracts the *vector* icons the SVG can't give us as reusable files.
 const MAX_ASSETS = 500; // stop extracting past this (huge trees / OOM guard)
-const CONTAINER_TYPES = new Set(["FRAME", "GROUP", "COMPONENT", "INSTANCE", "COMPONENT_SET"]);
 
 /** A file destined for preview.assets/. Bytes are base64-encoded later, in the UI. */
 interface RawAsset {
   name: string;
-  kind: "png" | "svg";
   bytes: Uint8Array;
 }
 
@@ -286,14 +286,11 @@ function slugName(value: unknown, fallback: string): string {
   return cleaned || fallback;
 }
 
-/** The first visible IMAGE paint's hash, or null when the node has no image fill. */
-function imageHashOf(node: AnyNode): string | null {
+/** True when the node (or a descendant) carries a visible IMAGE paint. */
+function hasImageFill(node: AnyNode): boolean {
   const fills = tryRead(node, "fills");
-  if (!Array.isArray(fills)) return null;
-  for (const fill of fills) {
-    if (fill && fill.type === "IMAGE" && fill.visible !== false) return fill.imageHash ?? "image";
-  }
-  return null;
+  if (!Array.isArray(fills)) return false;
+  return fills.some((fill) => fill && fill.type === "IMAGE" && fill.visible !== false);
 }
 
 /** True when the subtree is vector-only: no TEXT and no image fills anywhere.
@@ -301,7 +298,7 @@ function imageHashOf(node: AnyNode): string | null {
 function isVectorOnly(node: AnyNode): boolean {
   if (node.visible === false) return true;
   if (node.type === "TEXT") return false;
-  if (imageHashOf(node) !== null) return false;
+  if (hasImageFill(node)) return false;
   if (Array.isArray(node.children)) {
     for (const child of node.children) if (!isVectorOnly(child)) return false;
   }
@@ -323,15 +320,14 @@ async function iconIdentity(node: AnyNode): Promise<{ key: string; name: string 
 }
 
 /**
- * Walk the tree and extract a typed asset library. Each node is classified:
- * raster (image fill) → PNG, icon (vector-only component/instance) → SVG, else
- * descend. Shape nodes stop the walk; a container with an image background is
- * still exported but its children are traversed (so icons on a photo survive).
- * Deduped by image hash / component key; invisible and zero-area nodes skipped.
+ * Walk the tree and export every vector-only component/instance as a reusable
+ * SVG icon. The topmost qualifying node wins (we stop descending into it);
+ * otherwise we keep descending, so icons sitting on a photographic background
+ * are still found. Deduped by main component key; invisible/zero-area skipped.
  */
-async function collectAssets(root: AnyNode): Promise<RawAsset[]> {
+async function collectIcons(root: AnyNode): Promise<RawAsset[]> {
   const assets: RawAsset[] = [];
-  const seen = new Set<string>(); // dedup keys: "img:<hash>" / "icon:<key>"
+  const seen = new Set<string>(); // dedup by "icon:<component key>"
   const usedNames = new Set<string>();
 
   const uniqueName = (base: string, ext: string): string => {
@@ -349,20 +345,7 @@ async function collectAssets(root: AnyNode): Promise<RawAsset[]> {
       return;
     }
 
-    const hash = imageHashOf(node);
-    if (hash !== null && "exportAsync" in node) {
-      const isContainer = CONTAINER_TYPES.has(node.type);
-      if (!seen.has(`img:${hash}`)) {
-        seen.add(`img:${hash}`);
-        try {
-          const bytes = (await node.exportAsync(pngSettings(node))) as Uint8Array;
-          assets.push({ name: uniqueName(slugName(node.name, "img"), "png"), kind: "png", bytes });
-        } catch (err) {
-          console.warn(`[figma-export] PNG asset export failed for "${node.name}":`, err);
-        }
-      }
-      if (!isContainer) return; // shape node: stop; container: fall through to descend
-    } else if (
+    if (
       (node.type === "COMPONENT" || node.type === "INSTANCE") &&
       "exportAsync" in node &&
       isVectorOnly(node)
@@ -372,9 +355,9 @@ async function collectAssets(root: AnyNode): Promise<RawAsset[]> {
         seen.add(`icon:${key}`);
         try {
           const bytes = (await node.exportAsync({ format: "SVG" })) as Uint8Array;
-          assets.push({ name: uniqueName(slugName(name, "icon"), "svg"), kind: "svg", bytes });
+          assets.push({ name: uniqueName(slugName(name, "icon"), "svg"), bytes });
         } catch (err) {
-          console.warn(`[figma-export] SVG asset export failed for "${name}":`, err);
+          console.warn(`[figma-export] SVG icon export failed for "${name}":`, err);
         }
       }
       return; // icon: stop descending
@@ -539,11 +522,11 @@ figma.ui.onmessage = async (msg: ExportMessage) => {
       }
     }
 
-    let assets: RawAsset[] = [];
+    let icons: RawAsset[] = [];
     if (msg.library && "exportAsync" in target) {
-      figma.ui.postMessage({ type: "progress", message: "Extracting typed assets…" });
-      assets = await collectAssets(target);
-      console.log(`[figma-export] extracted ${assets.length} typed asset(s)`);
+      figma.ui.postMessage({ type: "progress", message: "Extracting icons…" });
+      icons = await collectIcons(target);
+      console.log(`[figma-export] extracted ${icons.length} icon(s)`);
     }
 
     const summary = summarize(node, components, remoteMasters);
@@ -564,7 +547,7 @@ figma.ui.onmessage = async (msg: ExportMessage) => {
       remoteMasters,
     };
 
-    figma.ui.postMessage({ type: "result", payload, svgBytes, pngBytes, assets });
+    figma.ui.postMessage({ type: "result", payload, svgBytes, pngBytes, icons, library: msg.library });
   } catch (err) {
     figma.ui.postMessage({ type: "error", message: String((err as Error)?.message ?? err) });
   }
