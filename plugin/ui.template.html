@@ -5,88 +5,347 @@
     <style>
       :root {
         color-scheme: light dark;
-        --border: rgba(127, 127, 127, 0.25);
-        --muted: #888;
+        --bg: var(--figma-color-bg, #fff);
+        --text: var(--figma-color-text, #1a1a1a);
+        --muted: var(--figma-color-text-secondary, #888);
+        --border: var(--figma-color-border, rgba(127, 127, 127, 0.3));
+        --card: var(--figma-color-bg-secondary, rgba(127, 127, 127, 0.06));
         --chip: rgba(127, 127, 127, 0.14);
-        --card: rgba(127, 127, 127, 0.06);
+        --brand: var(--figma-color-bg-brand, #0d99ff);
+        --brand-text: var(--figma-color-text-onbrand, #fff);
         --accent: #14ae5c;
-        --err: #f24822;
+        --err: var(--figma-color-text-danger, #f24822);
+        --err-bg: rgba(242, 72, 34, 0.1);
+        --err-border: rgba(242, 72, 34, 0.4);
+        --warn: var(--figma-color-text-warning, #a56a00);
+        --warn-bg: rgba(242, 174, 34, 0.13);
+        --warn-border: rgba(242, 174, 34, 0.4);
       }
       * { box-sizing: border-box; }
       body {
         font: 12px/1.45 -apple-system, Segoe UI, sans-serif;
         margin: 0;
-        padding: 16px;
+        /* Extra bottom padding gives the last element breathing room when the panel scrolls. */
+        padding: 16px 16px 20px;
+        background: var(--bg);
+        color: var(--text);
         overflow-y: auto;
       }
-      label { display: block; font-weight: 600; margin: 12px 0 4px; }
-      input[type="text"],
-      select {
+
+      /* Calm grouped blocks: a titled section per concern. */
+      .block { margin-bottom: 18px; }
+      .block-title {
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .block-hint { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+      input[type="text"] {
         width: 100%;
         padding: 8px;
-        border: 1px solid #999;
+        border: 1px solid var(--border);
         border-radius: 6px;
         font: inherit;
+        color: inherit;
         background: transparent;
       }
-      .row { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
-      .row label { margin: 0; font-weight: 400; }
-      .hint { color: var(--muted); font-size: 11px; margin-top: 2px; }
 
-      #selection {
+      /* 1 — Selection card */
+      .sel-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
         padding: 10px;
         border: 1px solid var(--border);
         border-radius: 8px;
         background: var(--card);
       }
+      .sel-thumb {
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        border-radius: 6px;
+        background: var(--chip);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .sel-info { min-width: 0; }
       #selName { font-weight: 600; word-break: break-word; }
       #selMeta { color: var(--muted); font-size: 11px; }
 
-      button {
-        margin-top: 16px;
+      /* 2 — Where it goes */
+      .field-row { display: flex; gap: 6px; align-items: stretch; }
+      .field-row input { flex: 1; }
+
+      /* 3 & 4 — segmented controls */
+      .segmented {
+        display: flex;
+        gap: 4px;
+        padding: 3px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--card);
+      }
+      .seg {
+        flex: 1;
+        padding: 7px 8px;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .seg[aria-pressed="true"] {
+        background: var(--brand);
+        color: var(--brand-text);
+        font-weight: 600;
+      }
+
+      /* 3 — Skip preview: a quiet secondary link, not an equal segment. */
+      .linklike {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--muted);
+        font: inherit;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      .linklike.on { color: var(--text); font-weight: 600; }
+
+      /* 5 — Options toggle */
+      .row { display: flex; align-items: center; gap: 8px; }
+      .row label { font-weight: 400; }
+      /* Custom checkbox: the native control follows `color-scheme` and renders
+         as a black square under a dark OS/Figma theme, so we style our own. */
+      .row input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        margin: 0;
+        width: 16px;
+        height: 16px;
+        flex: none;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--bg);
+        cursor: pointer;
+        display: grid;
+        place-content: center;
+      }
+      .row input[type="checkbox"]::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        transform: scale(0);
+        transition: transform 0.08s ease-in-out;
+        background: var(--brand-text);
+        clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+      }
+      .row input[type="checkbox"]:checked {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .row input[type="checkbox"]:checked::before { transform: scale(1); }
+      .row input[type="checkbox"]:focus-visible {
+        outline: 2px solid var(--brand);
+        outline-offset: 1px;
+      }
+
+      /* 6 — Connection, visually demoted */
+      .block.quiet .block-title { color: var(--muted); }
+      .block.quiet input[type="text"] {
+        font-size: 11px;
+        color: var(--muted);
+        padding: 6px 8px;
+      }
+
+      /* 7 — Export */
+      #export {
         width: 100%;
         padding: 10px;
         border: 0;
         border-radius: 6px;
-        background: #0d99ff;
-        color: #fff;
+        background: var(--brand);
+        color: var(--brand-text);
         font: inherit;
         font-weight: 600;
         cursor: pointer;
       }
-      button:disabled { opacity: 0.5; cursor: default; }
+      #export:disabled { opacity: 0.5; cursor: default; }
 
-      .field-row { display: flex; gap: 6px; align-items: stretch; }
-      .field-row input { flex: 1; }
       button.secondary {
-        margin-top: 0;
         width: auto;
         white-space: nowrap;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
         background: var(--chip);
         color: inherit;
-        border: 1px solid var(--border);
+        font: inherit;
+        cursor: pointer;
       }
+      button.secondary:disabled { opacity: 0.5; cursor: default; }
 
       #status { margin-top: 12px; white-space: pre-wrap; word-break: break-word; }
       #status.err { color: var(--err); }
       #status.progress { color: var(--muted); }
 
+      /* Exporting — dim the input controls while a run is in flight. */
+      #controls.dimmed { opacity: 0.5; pointer-events: none; }
+
+      /* Spinner — on the Export button while exporting. */
+      .spinner {
+        display: inline-block;
+        width: 13px;
+        height: 13px;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #fff;
+        border-radius: 999px;
+        animation: spin 0.7s linear infinite;
+        vertical-align: -2px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* Connection status dot — flips red when the server is unreachable. */
+      .conn-dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: var(--muted);
+        margin-right: 5px;
+        vertical-align: 1px;
+      }
+      .conn-dot.ok { background: var(--accent); }
+      .conn-dot.down { background: var(--err); }
+
+      /* Error banner — red danger + a recovery action (distinct from amber warnings). */
+      #banner {
+        margin-top: 12px;
+        display: none;
+        padding: 10px;
+        border-radius: 8px;
+        background: var(--err-bg);
+        border: 1px solid var(--err-border);
+      }
+      #banner.show { display: block; }
+      .b-title { display: flex; align-items: center; gap: 6px; font-weight: 700; color: var(--err); }
+      .b-msg { margin-top: 4px; color: var(--err); }
+      .b-actions { margin-top: 10px; display: flex; gap: 6px; }
+      .b-btn {
+        padding: 6px 12px;
+        border: 1px solid var(--err);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--err);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .b-btn.solid { background: var(--err); color: #fff; border-color: transparent; }
+
+      /* Folder input outlined red when the folder couldn't be found. */
+      input[type="text"].bad { border-color: var(--err); }
+
+      /* Success report (rendered by the UI script). */
       #result { margin-top: 12px; display: none; }
       #result.show { display: block; }
       .r-head {
         display: flex;
-        align-items: baseline;
+        align-items: center;
         gap: 8px;
-        font-weight: 600;
+        font-weight: 700;
+        font-size: 14px;
         color: var(--accent);
       }
-      .r-path {
+      .r-tick {
+        flex: 0 0 auto;
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+      }
+
+      /* Destination: monospace path + Open folder action. */
+      .dest {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--card);
+      }
+      .dest .r-path {
+        flex: 1;
+        min-width: 0;
+        margin: 0;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 11px;
         color: var(--muted);
         word-break: break-all;
-        margin: 4px 0 12px;
       }
+
+      /* Receipt actions (Open preview · Export another). */
+      .actions { display: flex; gap: 6px; margin-top: 10px; }
+      .actions button { flex: 1; }
+      button.mini {
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--chip);
+        color: inherit;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      button.mini:disabled { opacity: 0.5; cursor: default; }
+
+      /* Plain-language "what was written" line. */
+      .wrote-plain { margin-top: 12px; }
+      .wrote-plain b { font-weight: 600; }
+
+      /* Details disclosure — technical stats, collapsed by default. */
+      details.more {
+        margin-top: 14px;
+        border-top: 1px solid var(--border);
+        padding-top: 12px;
+      }
+      details.more > summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+      details.more > summary::-webkit-details-marker { display: none; }
+      details.more > summary .caret { transition: transform 0.15s; }
+      details.more[open] > summary .caret { transform: rotate(90deg); }
+      .more-body { margin-top: 12px; }
       .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
       .stat {
         border: 1px solid var(--border);
@@ -125,69 +384,114 @@
       .samples { display: flex; flex-direction: column; gap: 2px; }
       .sample { color: var(--muted); font-style: italic; }
 
+      /* Status pills share the chips' vertical padding so tags line up at one height. */
       .badge {
         display: inline-block;
         border-radius: 999px;
-        padding: 1px 8px;
+        padding: 2px 8px;
         font-size: 11px;
         font-weight: 600;
       }
       .badge.ok { background: rgba(20, 174, 92, 0.16); color: var(--accent); }
-      .badge.warn { background: rgba(242, 72, 34, 0.14); color: var(--err); }
+      /* A failed linked-component is a soft warning (saved as reference) — amber, not red. */
+      .badge.warn { background: var(--warn-bg); color: var(--warn); }
 
-      .warn-note {
-        margin: 8px 0;
-        padding: 8px 10px;
+      /* Warnings — one amber, expandable summary (distinct from red errors). */
+      details.warnings {
+        margin-top: 12px;
+        border: 1px solid var(--warn-border);
         border-radius: 8px;
-        background: rgba(242, 72, 34, 0.1);
-        color: var(--err);
-        font-size: 11px;
+        background: var(--warn-bg);
       }
-
-      .unresolved-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-      .error-item { display: flex; flex-direction: column; }
-      .error-name { font-weight: 600; word-break: break-word; }
-      .error-msg { color: var(--muted); font-size: 11px; word-break: break-word; }
+      details.warnings > summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 10px;
+        font-weight: 600;
+        color: var(--warn);
+      }
+      details.warnings > summary::-webkit-details-marker { display: none; }
+      details.warnings > summary .caret { transition: transform 0.15s; }
+      details.warnings[open] > summary .caret { transform: rotate(90deg); }
+      .warn-body {
+        padding: 0 10px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .warn-item { color: var(--warn); font-size: 11px; line-height: 1.45; }
     </style>
   </head>
   <body>
-    <div id="selection">
-      <div id="selName">Nothing selected</div>
-      <div id="selMeta">Select a layer on the canvas.</div>
+    <!-- 1 — Selection -->
+    <section class="block">
+      <div class="block-title">Selection</div>
+      <div id="selection" class="sel-card">
+        <div id="selThumb" class="sel-thumb" aria-hidden="true">–</div>
+        <div class="sel-info">
+          <div id="selName">Nothing selected</div>
+          <div id="selMeta">Select a layer on the canvas.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Input controls — dimmed together while an export is in flight. -->
+    <div id="controls">
+    <!-- 2 — Where it goes -->
+    <section class="block">
+      <div class="block-title">Where it goes</div>
+      <div class="field-row">
+        <input id="outputDir" type="text" placeholder="/Users/you/Programming/my-repo/figma-export" />
+        <button type="button" id="browse" class="secondary">Browse…</button>
+      </div>
+      <div class="block-hint">Absolute path to write into. Leave blank to use the server's default folder.</div>
+    </section>
+
+    <!-- 3 — Preview image -->
+    <section class="block">
+      <div class="block-title">Preview image</div>
+      <div class="segmented" role="group" aria-label="Preview image format">
+        <button type="button" class="seg" data-preview="SVG" aria-pressed="true">Vector</button>
+        <button type="button" class="seg" data-preview="PNG" aria-pressed="false">Image</button>
+      </div>
+      <button type="button" id="skipPreview" class="linklike">Export without a preview</button>
+      <div class="block-hint">Vector stays crisp for icons and UI. Switch to Image if a vector-heavy layer won't preview.</div>
+    </section>
+
+    <!-- 4 — Output -->
+    <section class="block">
+      <div class="block-title">Output</div>
+      <div class="segmented" role="group" aria-label="Output format">
+        <button type="button" class="seg" data-output="folder" aria-pressed="true">Folder of assets</button>
+        <button type="button" class="seg" data-output="single" aria-pressed="false">Single SVG file</button>
+      </div>
+      <div class="block-hint">A folder keeps images and icons as separate files. A single file bundles everything into one SVG.</div>
+    </section>
+
+    <!-- 5 — Options -->
+    <section class="block">
+      <div class="block-title">Options</div>
+      <div class="row">
+        <input id="resolveRemote" type="checkbox" checked />
+        <label for="resolveRemote">Include components from other files</label>
+      </div>
+      <div class="block-hint">Also saves the full definition of components that live in other files.</div>
+    </section>
+
+    <!-- 6 — Connection -->
+    <section class="block quiet">
+      <div class="block-title"><span id="connDot" class="conn-dot"></span>Connection</div>
+      <input id="endpoint" type="text" value="http://localhost:3579/sync" />
+    </section>
     </div>
 
-    <label for="outputDir">Output folder</label>
-    <div class="field-row">
-      <input id="outputDir" type="text" placeholder="/Users/you/Programming/my-repo/figma-export" />
-      <button type="button" id="browse" class="secondary">Browse…</button>
-    </div>
-    <div class="hint">Absolute path to write into. Blank ⇒ the server's OUT_DIR.</div>
-
-    <label for="endpoint">Dev server endpoint</label>
-    <input id="endpoint" type="text" value="http://localhost:3579/sync" />
-
-    <label for="preview">Preview image</label>
-    <select id="preview">
-      <option value="SVG">SVG — vector, best for UI/simple art</option>
-      <option value="PNG">PNG — raster, safe for complex/heavy art</option>
-      <option value="NONE">None</option>
-    </select>
-    <div class="hint">Use PNG if SVG crashes on a vector-heavy node.</div>
-
-    <div class="row">
-      <input id="library" type="checkbox" checked />
-      <label for="library">Export typed asset library</label>
-    </div>
-    <div class="hint">Writes assets to preview.assets/: raster images pulled out of the SVG (keeping it small) plus vector icon components as .svg. When images are extracted, a preview.html is written to view them — open that, not preview.svg. Uncheck for a single self-contained SVG with inline images.</div>
-
-    <div class="row">
-      <input id="resolveRemote" type="checkbox" checked />
-      <label for="resolveRemote">Resolve remote library masters (import by key)</label>
-    </div>
-    <div class="hint">Pulls full definitions for components from other files. Needs those libraries published &amp; enabled here.</div>
-
-    <button id="export" disabled>Select a layer to export</button>
+    <!-- 7 — Export -->
+    <button type="button" id="export" disabled>Select something to export</button>
     <div id="status"></div>
+    <div id="banner"></div>
     <div id="result"></div>
 
     __UI_SCRIPT__
