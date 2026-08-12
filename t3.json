@@ -1,0 +1,36 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "scripts": [
+    {
+      "name": "Install deps",
+      "command": "pnpm install",
+      "icon": "download",
+      "runOnWorktreeCreate": true
+    },
+    {
+      "name": "Dev server",
+      "command": "pnpm dev",
+      "icon": "play"
+    },
+    {
+      "name": "Start server",
+      "command": "pnpm start",
+      "icon": "play"
+    },
+    {
+      "name": "Build plugin",
+      "command": "pnpm build:plugin",
+      "icon": "hammer"
+    },
+    {
+      "name": "Watch plugin",
+      "command": "pnpm dev:plugin",
+      "icon": "eye"
+    },
+    {
+      "name": "Type check",
+      "command": "pnpm check-types",
+      "icon": "check"
+    }
+  ]
+}
