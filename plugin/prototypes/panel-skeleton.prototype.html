@@ -1,0 +1,580 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Ticket #7 (Panel skeleton & progressive disclosure).
+  Question: default top-to-bottom structure + what's up front vs. behind "Advanced".
+  Three structurally different skeletons, switch with ?variant=A|B|C or the bottom bar / arrow keys.
+  No wiring. Open this file directly in a browser. Toggle light/dark with the ☀/☾ button.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Prototype — panel skeleton (#7)</title>
+    <style>
+      /* ---- fake Figma theming tokens (from research #6): color-only --figma-color-* ---- */
+      :root {
+        --figma-color-bg: #ffffff;
+        --figma-color-bg-secondary: #f5f5f5;
+        --figma-color-bg-hover: rgba(0, 0, 0, 0.06);
+        --figma-color-bg-brand: #0d99ff;
+        --figma-color-bg-brand-hover: #007be5;
+        --figma-color-bg-success: #14ae5c;
+        --figma-color-bg-danger-tertiary: rgba(242, 72, 34, 0.1);
+        --figma-color-text: #1a1a1a;
+        --figma-color-text-secondary: #7a7a7a;
+        --figma-color-text-onbrand: #ffffff;
+        --figma-color-text-danger: #d33;
+        --figma-color-border: rgba(0, 0, 0, 0.1);
+        --figma-color-border-strong: rgba(0, 0, 0, 0.3);
+        --figma-color-icon: #333;
+      }
+      body.dark {
+        --figma-color-bg: #2c2c2c;
+        --figma-color-bg-secondary: #383838;
+        --figma-color-bg-hover: rgba(255, 255, 255, 0.08);
+        --figma-color-bg-brand: #0d99ff;
+        --figma-color-bg-brand-hover: #3badff;
+        --figma-color-bg-success: #14ae5c;
+        --figma-color-bg-danger-tertiary: rgba(242, 72, 34, 0.16);
+        --figma-color-text: #ffffff;
+        --figma-color-text-secondary: #9c9c9c;
+        --figma-color-text-onbrand: #ffffff;
+        --figma-color-text-danger: #ff8a7a;
+        --figma-color-border: rgba(255, 255, 255, 0.12);
+        --figma-color-border-strong: rgba(255, 255, 255, 0.35);
+        --figma-color-icon: #ccc;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: Inter, -apple-system, "Segoe UI", sans-serif;
+        background: #6b6b6b;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 40px 16px 96px;
+        min-height: 100%;
+      }
+
+      /* ---- the fake plugin iframe: Figma panels are a fixed-width narrow pane ---- */
+      .panel {
+        width: 340px;
+        min-height: 520px;
+        background: var(--figma-color-bg);
+        color: var(--figma-color-text);
+        border-radius: 8px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+        font-size: 11px;
+        line-height: 16px;
+      }
+      .panel-inner { padding: 12px; }
+
+      /* ---- shared atoms tuned to Figma-native: 11px text, 4px spacing, 2px radius ---- */
+      .label {
+        display: block;
+        font-weight: 600;
+        margin: 0 0 4px;
+        font-size: 11px;
+      }
+      .hint { color: var(--figma-color-text-secondary); font-size: 11px; margin-top: 4px; }
+      input[type="text"], select {
+        width: 100%;
+        height: 30px;
+        padding: 0 8px;
+        border: 1px solid var(--figma-color-border-strong);
+        border-radius: 2px;
+        font: inherit;
+        color: var(--figma-color-text);
+        background: var(--figma-color-bg);
+      }
+      select { appearance: none; background-image: none; padding-right: 22px; }
+      .selectwrap { position: relative; }
+      .selectwrap::after {
+        content: "▾"; position: absolute; right: 8px; top: 7px;
+        color: var(--figma-color-text-secondary); pointer-events: none; font-size: 10px;
+      }
+      .field-row { display: flex; gap: 4px; align-items: stretch; }
+      .field-row input { flex: 1; }
+
+      button.btn {
+        height: 32px; width: 100%;
+        border: 0; border-radius: 6px;
+        background: var(--figma-color-bg-brand);
+        color: var(--figma-color-text-onbrand);
+        font: inherit; font-weight: 600; font-size: 12px;
+        cursor: pointer;
+      }
+      button.btn:hover { background: var(--figma-color-bg-brand-hover); }
+      button.btn:disabled { opacity: 0.4; cursor: default; }
+      button.ghost {
+        height: 30px; padding: 0 10px; width: auto; white-space: nowrap;
+        background: var(--figma-color-bg-secondary);
+        color: var(--figma-color-text);
+        border: 1px solid var(--figma-color-border);
+        border-radius: 2px; font: inherit; cursor: pointer;
+      }
+      button.iconbtn {
+        width: 28px; height: 28px; border-radius: 4px;
+        border: 1px solid var(--figma-color-border);
+        background: var(--figma-color-bg-secondary);
+        color: var(--figma-color-icon); cursor: pointer; font-size: 13px;
+      }
+
+      /* selection card */
+      .selcard {
+        display: flex; gap: 8px; align-items: center;
+        padding: 10px; border: 1px solid var(--figma-color-border);
+        border-radius: 6px; background: var(--figma-color-bg-secondary);
+      }
+      .selcard .thumb {
+        width: 32px; height: 32px; border-radius: 4px; flex: none;
+        background: linear-gradient(135deg, #7b61ff, #0d99ff);
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-weight: 700; font-size: 13px;
+      }
+      .selcard .name { font-weight: 600; font-size: 12px; }
+      .selcard .meta { color: var(--figma-color-text-secondary); font-size: 11px; }
+
+      /* checkbox rows */
+      .checkrow { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; }
+      .checkrow input { margin: 1px 0 0; }
+      .checkrow .ctext { font-size: 11px; }
+      .checkrow .ctext b { font-weight: 600; }
+
+      /* Advanced disclosure (variant A) */
+      details.adv {
+        margin-top: 14px; border-top: 1px solid var(--figma-color-border); padding-top: 10px;
+      }
+      details.adv > summary {
+        list-style: none; cursor: pointer; font-weight: 600; font-size: 11px;
+        display: flex; align-items: center; gap: 6px; color: var(--figma-color-text-secondary);
+        text-transform: uppercase; letter-spacing: 0.04em;
+      }
+      details.adv > summary::-webkit-details-marker { display: none; }
+      details.adv > summary .caret { transition: transform 0.15s; }
+      details.adv[open] > summary .caret { transform: rotate(90deg); }
+      .adv-body { margin-top: 10px; }
+      .field { margin-top: 12px; }
+      .field:first-child { margin-top: 0; }
+
+      /* calm grouped blocks (variant B) */
+      .block { margin-top: 16px; }
+      .block:first-child { margin-top: 0; }
+      .blocktitle {
+        font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+        color: var(--figma-color-text-secondary); margin-bottom: 8px;
+      }
+      .segrow { display: flex; gap: 4px; }
+      .seg {
+        flex: 1; text-align: center; padding: 6px 4px; border-radius: 4px;
+        border: 1px solid var(--figma-color-border); background: var(--figma-color-bg);
+        cursor: pointer; font-size: 11px;
+      }
+      .seg.on { background: var(--figma-color-bg-brand); color: #fff; border-color: var(--figma-color-bg-brand); }
+      .steprail { position: relative; }
+      .link { color: var(--figma-color-bg-brand); cursor: pointer; font-size: 11px; }
+      .connfoot {
+        margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--figma-color-border);
+        display: flex; align-items: center; gap: 6px; color: var(--figma-color-text-secondary); font-size: 11px;
+      }
+      .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--figma-color-bg-success); }
+
+      /* two-view split (variant C) */
+      .topbar {
+        display: flex; align-items: center; justify-content: space-between;
+        margin: -12px -12px 12px; padding: 8px 10px;
+        border-bottom: 1px solid var(--figma-color-border); background: var(--figma-color-bg-secondary);
+      }
+      .topbar .ttl { font-weight: 600; font-size: 12px; }
+      .destline {
+        display: flex; align-items: center; gap: 6px; margin-top: 12px;
+        color: var(--figma-color-text-secondary); font-size: 11px; cursor: pointer;
+      }
+      .destline .path { font-family: ui-monospace, Menlo, monospace; color: var(--figma-color-text); }
+      .settings-row {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 0; border-bottom: 1px solid var(--figma-color-border);
+      }
+      .settings-row .k { font-weight: 600; font-size: 11px; }
+      .settings-row .v { color: var(--figma-color-text-secondary); font-size: 11px; max-width: 55%; text-align: right; }
+      .spacer { flex: 1; }
+      .stack { display: flex; flex-direction: column; }
+      .grow { flex: 1; }
+
+      /* chips / split-button (variant D) */
+      .hero {
+        display: flex; gap: 10px; align-items: center; padding: 12px;
+        border: 1px solid var(--figma-color-border); border-radius: 8px;
+        background: var(--figma-color-bg-secondary);
+      }
+      .hero .thumb {
+        width: 44px; height: 44px; border-radius: 6px; flex: none;
+        background: linear-gradient(135deg, #7b61ff, #0d99ff);
+        display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px;
+      }
+      .hero .name { font-weight: 600; font-size: 13px; }
+      .hero .meta { color: var(--figma-color-text-secondary); font-size: 11px; }
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      .chip {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 5px 9px; border-radius: 999px; font-size: 11px; cursor: pointer;
+        border: 1px solid var(--figma-color-border); background: var(--figma-color-bg-secondary);
+        color: var(--figma-color-text);
+      }
+      .chip .ca { color: var(--figma-color-text-secondary); font-size: 9px; }
+      .chip.on { background: rgba(13, 153, 255, 0.14); border-color: var(--figma-color-bg-brand); }
+      .chip.folder { max-width: 100%; }
+      .chip.folder .p { font-family: ui-monospace, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      /* presets / recipes (variant E) */
+      .preset {
+        display: flex; gap: 10px; align-items: flex-start; padding: 10px;
+        border: 1px solid var(--figma-color-border); border-radius: 8px; margin-top: 8px; cursor: pointer;
+      }
+      .preset.on { border-color: var(--figma-color-bg-brand); background: rgba(13, 153, 255, 0.06); }
+      .preset .radio {
+        width: 16px; height: 16px; border-radius: 999px; flex: none; margin-top: 1px;
+        border: 1.5px solid var(--figma-color-border-strong); position: relative;
+      }
+      .preset.on .radio { border-color: var(--figma-color-bg-brand); }
+      .preset.on .radio::after {
+        content: ""; position: absolute; inset: 3px; border-radius: 999px; background: var(--figma-color-bg-brand);
+      }
+      .preset .pname { font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+      .preset .pdesc { color: var(--figma-color-text-secondary); font-size: 11px; margin-top: 3px; }
+      .rec {
+        font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+        color: var(--figma-color-bg-success); background: rgba(20, 174, 92, 0.16);
+        padding: 1px 6px; border-radius: 999px;
+      }
+
+      /* ---- prototype switcher (NOT part of the design) ---- */
+      .switcher {
+        position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+        display: flex; align-items: center; gap: 4px; z-index: 99;
+        background: #111; color: #fff; border-radius: 999px; padding: 6px 8px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); font-family: Inter, sans-serif; font-size: 12px;
+      }
+      .switcher button {
+        background: #2a2a2a; color: #fff; border: 0; border-radius: 999px;
+        width: 26px; height: 26px; cursor: pointer; font-size: 14px;
+      }
+      .switcher .vlabel { padding: 0 8px; min-width: 210px; text-align: center; font-weight: 600; }
+      .switcher .sep { width: 1px; height: 18px; background: #444; margin: 0 2px; }
+      .switcher .theme { width: auto; padding: 0 10px; }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <!-- =========================== VARIANT A: Lean + one Advanced drawer =========================== -->
+    <div class="panel" data-variant="A">
+      <div class="panel-inner">
+        <div class="selcard">
+          <div class="thumb">◈</div>
+          <div>
+            <div class="name">Button / Primary</div>
+            <div class="meta">Component set · 4 variants</div>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top: 14px;">
+          <label class="label" for="a-out">Save to folder</label>
+          <div class="field-row">
+            <input id="a-out" type="text" value="~/Programming/my-repo/figma-export" />
+            <button class="ghost">Browse…</button>
+          </div>
+        </div>
+
+        <button class="btn" style="margin-top: 16px;">Export “Button / Primary”</button>
+
+        <details class="adv">
+          <summary><span class="caret">▸</span> Advanced</summary>
+          <div class="adv-body">
+            <div class="field">
+              <label class="label" for="a-fmt">Preview image</label>
+              <div class="selectwrap">
+                <select id="a-fmt">
+                  <option>Vector (SVG) — best for UI &amp; icons</option>
+                  <option>Image (PNG) — safe for heavy art</option>
+                  <option>No preview</option>
+                </select>
+              </div>
+            </div>
+            <div class="checkrow">
+              <input type="checkbox" id="a-lib" checked />
+              <div class="ctext"><label class="label" for="a-lib" style="margin:0">Export typed asset library</label></div>
+            </div>
+            <div class="checkrow">
+              <input type="checkbox" id="a-rem" checked />
+              <div class="ctext"><label class="label" for="a-rem" style="margin:0">Resolve remote library masters</label></div>
+            </div>
+            <div class="field">
+              <label class="label" for="a-ep">Dev server endpoint</label>
+              <input id="a-ep" type="text" value="http://localhost:3579/sync" />
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- =========================== VARIANT B: Calm grouped blocks =========================== -->
+    <div class="panel hidden" data-variant="B">
+      <div class="panel-inner">
+        <div class="block">
+          <div class="selcard">
+            <div class="thumb">◈</div>
+            <div>
+              <div class="name">Button / Primary</div>
+              <div class="meta">Component set · 4 variants</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="block">
+          <div class="blocktitle">Where it goes</div>
+          <div class="field-row">
+            <input type="text" value="~/Programming/my-repo/figma-export" />
+            <button class="ghost">Browse…</button>
+          </div>
+        </div>
+
+        <div class="block">
+          <div class="blocktitle">Preview image</div>
+          <div class="segrow">
+            <div class="seg on">Vector</div>
+            <div class="seg">Image</div>
+            <div class="seg">Skip</div>
+          </div>
+        </div>
+
+        <div class="block">
+          <div class="blocktitle">Options</div>
+          <div class="checkrow" style="margin-top: 0;">
+            <input type="checkbox" id="b-lib" checked />
+            <div class="ctext"><label class="label" for="b-lib" style="margin: 0">Export typed asset library</label></div>
+          </div>
+          <div class="checkrow">
+            <input type="checkbox" id="b-rem" checked />
+            <div class="ctext"><label class="label" for="b-rem" style="margin: 0">Resolve remote library masters</label></div>
+          </div>
+        </div>
+
+        <div class="block">
+          <div class="blocktitle">Connection</div>
+          <div class="connfoot" style="margin-top: 0; padding-top: 0; border-top: 0;">
+            <span class="dot"></span> Connected · <span style="font-family: ui-monospace, Menlo, monospace;">http://localhost:3579/sync</span>
+          </div>
+        </div>
+
+        <button class="btn" style="margin-top: 18px;">Export to folder</button>
+      </div>
+    </div>
+
+    <!-- =========================== VARIANT C: Action / Settings split =========================== -->
+    <div class="panel hidden" data-variant="C">
+      <!-- action screen -->
+      <div id="c-action">
+        <div class="panel-inner">
+          <div class="topbar">
+            <span class="ttl">Export</span>
+            <button class="iconbtn" onclick="cShow('settings')" title="Settings">⚙</button>
+          </div>
+          <div class="selcard">
+            <div class="thumb">◈</div>
+            <div>
+              <div class="name">Button / Primary</div>
+              <div class="meta">Component set · 4 variants</div>
+            </div>
+          </div>
+
+          <button class="btn" style="margin-top: 16px;">Export selection</button>
+
+          <div class="destline" onclick="cShow('settings')">
+            → <span class="path">~/my-repo/figma-export</span> · Vector preview · ⚙
+          </div>
+        </div>
+      </div>
+
+      <!-- settings screen -->
+      <div id="c-settings" class="hidden">
+        <div class="panel-inner">
+          <div class="topbar">
+            <button class="iconbtn" onclick="cShow('action')" title="Back">‹</button>
+            <span class="ttl">Settings</span>
+            <span style="width: 28px;"></span>
+          </div>
+
+          <div class="field">
+            <label class="label" for="c-out">Default save folder</label>
+            <div class="field-row">
+              <input id="c-out" type="text" value="~/Programming/my-repo/figma-export" />
+              <button class="ghost">Browse…</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="label" for="c-fmt">Preview image</label>
+            <div class="selectwrap">
+              <select id="c-fmt">
+                <option>Vector (SVG)</option>
+                <option>Image (PNG)</option>
+                <option>No preview</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-top: 16px;">
+            <div class="settings-row">
+              <span class="k">Export typed asset library</span>
+              <input type="checkbox" checked />
+            </div>
+            <div class="settings-row">
+              <span class="k">Resolve remote library masters</span>
+              <input type="checkbox" checked />
+            </div>
+            <div class="settings-row" style="border-bottom: 0;">
+              <span class="k">Dev server endpoint</span>
+              <span class="v">localhost:3579</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================== VARIANT D: Chips & split-button =========================== -->
+    <div class="panel hidden" data-variant="D">
+      <div class="panel-inner">
+        <div class="hero">
+          <div class="thumb">◈</div>
+          <div>
+            <div class="name">Button / Primary</div>
+            <div class="meta">Component set · 4 variants</div>
+          </div>
+        </div>
+
+        <div class="chips">
+          <span class="chip folder"><span>📁</span><span class="p">~/my-repo/figma-export</span><span class="ca">▾</span></span>
+          <span class="chip on">Vector <span class="ca">▾</span></span>
+          <span class="chip on">Asset library ✓</span>
+          <span class="chip on">Remote masters ✓</span>
+          <span class="chip"><span class="ca">•••</span></span>
+        </div>
+        <div class="hint" style="margin-top: 8px;">Tap a chip to change it. Everything is optional — sensible defaults are set.</div>
+
+        <button class="btn" style="margin-top: 16px;">Export selection</button>
+      </div>
+    </div>
+
+    <!-- =========================== VARIANT E: Pick a recipe =========================== -->
+    <div class="panel hidden" data-variant="E">
+      <div class="panel-inner">
+        <div class="selcard">
+          <div class="thumb">◈</div>
+          <div>
+            <div class="name">Button / Primary</div>
+            <div class="meta">Component set · 4 variants</div>
+          </div>
+        </div>
+
+        <div class="label" style="margin-top: 14px;">How should it be exported?</div>
+
+        <div class="preset">
+          <div class="radio"></div>
+          <div>
+            <div class="pname">Icon set</div>
+            <div class="pdesc">One clean <code>.svg</code> per icon. Best for icon libraries.</div>
+          </div>
+        </div>
+
+        <div class="preset on">
+          <div class="radio"></div>
+          <div>
+            <div class="pname">Full component <span class="rec">Recommended</span></div>
+            <div class="pdesc">SVG preview + extracted image assets, pulling in components from other files.</div>
+          </div>
+        </div>
+
+        <div class="preset">
+          <div class="radio"></div>
+          <div>
+            <div class="pname">Single flat SVG</div>
+            <div class="pdesc">One self-contained file with images inlined. Nothing extra written.</div>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top: 14px;">
+          <label class="label" for="e-out">Save to folder</label>
+          <div class="field-row">
+            <input id="e-out" type="text" value="~/my-repo/figma-export" />
+            <button class="ghost">Browse…</button>
+          </div>
+        </div>
+
+        <button class="btn" style="margin-top: 16px;">Export as “Full component”</button>
+        <div style="margin-top: 10px; text-align: center;"><span class="link">Customize this recipe…</span></div>
+      </div>
+    </div>
+
+    <!-- ---- switcher (not part of the design) ---- -->
+    <div class="switcher">
+      <button onclick="cycle(-1)">‹</button>
+      <span class="vlabel" id="vlabel"></span>
+      <button onclick="cycle(1)">›</button>
+      <span class="sep"></span>
+      <button class="theme" onclick="toggleTheme()" id="themebtn">☾ dark</button>
+    </div>
+
+    <script>
+      const VARIANTS = [
+        ["A", "Lean + one Advanced drawer"],
+        ["B", "Calm grouped blocks"],
+        ["C", "Action / Settings split"],
+        ["D", "Chips & split-button"],
+        ["E", "Pick a recipe"],
+      ];
+      function current() {
+        const p = new URLSearchParams(location.search).get("variant");
+        return VARIANTS.some(([k]) => k === p) ? p : "A";
+      }
+      function render() {
+        const v = current();
+        document.querySelectorAll(".panel").forEach((el) => {
+          el.classList.toggle("hidden", el.dataset.variant !== v);
+        });
+        const label = VARIANTS.find(([k]) => k === v);
+        document.getElementById("vlabel").textContent = `${label[0]} — ${label[1]}`;
+        cShow("action"); // reset variant C to its action screen
+      }
+      function cycle(dir) {
+        const keys = VARIANTS.map(([k]) => k);
+        const i = keys.indexOf(current());
+        const next = keys[(i + dir + keys.length) % keys.length];
+        const u = new URL(location);
+        u.searchParams.set("variant", next);
+        history.replaceState(null, "", u);
+        render();
+      }
+      function cShow(which) {
+        const a = document.getElementById("c-action");
+        const s = document.getElementById("c-settings");
+        if (!a || !s) return;
+        a.classList.toggle("hidden", which !== "action");
+        s.classList.toggle("hidden", which !== "settings");
+      }
+      function toggleTheme() {
+        document.body.classList.toggle("dark");
+        const dark = document.body.classList.contains("dark");
+        document.getElementById("themebtn").textContent = dark ? "☀ light" : "☾ dark";
+      }
+      document.addEventListener("keydown", (e) => {
+        const t = e.target;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        if (e.key === "ArrowLeft") cycle(-1);
+        if (e.key === "ArrowRight") cycle(1);
+      });
+      render();
+    </script>
+  </body>
+</html>
