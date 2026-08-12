@@ -263,23 +263,6 @@ function techDetail(s: ExportSummary): HTMLElement {
       );
     }
     linked.appendChild(badges);
-
-    if (s.remoteMasterErrors.length) {
-      const list = el("div", { class: "unresolved-list" });
-      const shown = s.remoteMasterErrors.slice(0, 30);
-      for (const e of shown) {
-        list.appendChild(
-          el("div", { class: "error-item" }, [
-            el("span", { class: "error-name", text: e.name }),
-            el("span", { class: "error-msg", text: e.error }),
-          ]),
-        );
-      }
-      const extra = s.remoteMasterErrors.length - shown.length;
-      if (extra > 0) list.appendChild(el("div", { class: "error-msg", text: `+${extra} more…` }));
-      linked.appendChild(list);
-    }
-
     wrap.appendChild(section("Linked components", linked));
   }
 
@@ -292,6 +275,53 @@ function techDetail(s: ExportSummary): HTMLElement {
   }
 
   return wrap;
+}
+
+/** Plain-language rewrites of every warning a successful export can carry
+ * (decision #9). Returned in the order they should read; empty when clean. */
+function warningItems(s: ExportSummary): string[] {
+  const items: string[] = [];
+  if (s.truncated && s.truncatedAt != null) {
+    items.push(
+      `Very large selection. We saved the first ${s.truncatedAt.toLocaleString()} layers — export a smaller frame to include everything.`,
+    );
+  }
+  if (s.preview.skipped) {
+    items.push(
+      "Preview image skipped — this artwork was too complex for an SVG preview. Everything else was saved; try the Image (PNG) preview next time.",
+    );
+  }
+  const failed = s.remoteMasterErrors.length;
+  if (failed === 1) {
+    items.push(
+      `1 linked component couldn't be loaded — “${s.remoteMasterErrors[0].name}” was published from another file that isn't enabled here, so it's saved as a reference only.`,
+    );
+  } else if (failed > 1) {
+    items.push(
+      `${failed} linked components couldn't be loaded — they were published from other files that aren't enabled here, so they're saved as references only.`,
+    );
+  }
+  return items;
+}
+
+/** Collapse any issues into one amber "⚠ N things worth knowing" summary that
+ * expands to the plain-language detail. Null when the export was clean. */
+function renderWarnings(s: ExportSummary): HTMLElement | null {
+  const items = warningItems(s);
+  if (!items.length) return null;
+
+  const details = el("details", { class: "warnings" });
+  const summary = el("summary");
+  summary.appendChild(el("span", { class: "caret", text: "▸" }));
+  summary.appendChild(
+    el("span", { text: `⚠ ${items.length} thing${items.length === 1 ? "" : "s"} worth knowing` }),
+  );
+  details.appendChild(summary);
+
+  const body = el("div", { class: "warn-body" });
+  for (const item of items) body.appendChild(el("div", { class: "warn-item", text: item }));
+  details.appendChild(body);
+  return details;
 }
 
 /** Ask the server to reveal a folder / open a file (the plugin iframe can't). */
@@ -357,22 +387,9 @@ function renderReport(s: ExportSummary, ctx: ReportContext): void {
   actions.appendChild(anotherBtn);
   resultEl.appendChild(actions);
 
-  if (s.truncated) {
-    resultEl.appendChild(
-      el("div", {
-        class: "warn-note",
-        text: `⚠ Selection too large — truncated at ${s.truncatedAt} nodes. Export a smaller frame for a complete tree.`,
-      }),
-    );
-  }
-  if (s.preview.skipped) {
-    resultEl.appendChild(
-      el("div", {
-        class: "warn-note",
-        text: "⚠ SVG preview skipped (tree too large). Try PNG instead.",
-      }),
-    );
-  }
+  // Warnings — one amber, expandable summary in plain language.
+  const warnings = renderWarnings(s);
+  if (warnings) resultEl.appendChild(warnings);
 
   // Plain-language summary.
   resultEl.appendChild(wroteLine(ctx, s));

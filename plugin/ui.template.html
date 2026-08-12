@@ -15,6 +15,9 @@
         --brand-text: var(--figma-color-text-onbrand, #fff);
         --accent: #14ae5c;
         --err: var(--figma-color-text-danger, #f24822);
+        --warn: var(--figma-color-text-warning, #a56a00);
+        --warn-bg: rgba(242, 174, 34, 0.13);
+        --warn-border: rgba(242, 174, 34, 0.4);
       }
       * { box-sizing: border-box; }
       body {
@@ -298,19 +301,33 @@
       .badge.ok { background: rgba(20, 174, 92, 0.16); color: var(--accent); }
       .badge.warn { background: rgba(242, 72, 34, 0.14); color: var(--err); }
 
-      .warn-note {
-        margin: 8px 0;
-        padding: 8px 10px;
+      /* Warnings — one amber, expandable summary (distinct from red errors). */
+      details.warnings {
+        margin-top: 12px;
+        border: 1px solid var(--warn-border);
         border-radius: 8px;
-        background: rgba(242, 72, 34, 0.1);
-        color: var(--err);
-        font-size: 11px;
+        background: var(--warn-bg);
       }
-
-      .unresolved-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-      .error-item { display: flex; flex-direction: column; }
-      .error-name { font-weight: 600; word-break: break-word; }
-      .error-msg { color: var(--muted); font-size: 11px; word-break: break-word; }
+      details.warnings > summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 10px;
+        font-weight: 600;
+        color: var(--warn);
+      }
+      details.warnings > summary::-webkit-details-marker { display: none; }
+      details.warnings > summary .caret { transition: transform 0.15s; }
+      details.warnings[open] > summary .caret { transform: rotate(90deg); }
+      .warn-body {
+        padding: 0 10px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .warn-item { color: var(--warn); font-size: 11px; line-height: 1.45; }
     </style>
   </head>
   <body>
