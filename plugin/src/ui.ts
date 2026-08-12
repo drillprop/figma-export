@@ -69,7 +69,8 @@ function setStatus(text: string, cls: "" | "err" | "progress" = ""): void {
 // "unknown" until we've reached the server; "ok" once we have; "down" when
 // the server can't be reached (decision #10: the dot flips red).
 function setConnection(state: "unknown" | "ok" | "down"): void {
-  connDotEl.className = "conn-dot" + (state === "ok" ? " ok" : state === "down" ? " down" : "");
+  const modifier = { unknown: "", ok: " ok", down: " down" }[state];
+  connDotEl.className = "conn-dot" + modifier;
 }
 
 // --- error banner -------------------------------------------------------
@@ -84,6 +85,12 @@ interface BannerAction {
 function clearBanner(): void {
   bannerEl.textContent = "";
   bannerEl.className = "";
+}
+
+/** Dismiss the error banner and the bad-folder outline together. */
+function clearErrors(): void {
+  clearBanner();
+  outputDirEl.classList.remove("bad");
 }
 
 function showBanner(title: string, message: string, actions: BannerAction[]): void {
@@ -531,8 +538,7 @@ async function chooseFolder(): Promise<void> {
     const body = (await res.json().catch(() => ({}))) as PickFolderResponse;
     if (body.path) {
       outputDirEl.value = body.path;
-      outputDirEl.classList.remove("bad");
-      clearBanner();
+      clearErrors();
       setStatus("");
     } else if (body.cancelled) {
       setStatus("");
@@ -570,8 +576,7 @@ function endExporting(): void {
 
 function startExport(): void {
   if (!selection[0] || busy) return;
-  clearBanner();
-  outputDirEl.classList.remove("bad");
+  clearErrors();
   enterExporting();
   parent.postMessage(
     {
@@ -600,10 +605,7 @@ window.onmessage = async (event: MessageEvent) => {
   }
   if (msg.type === "selection") {
     selection = msg.nodes;
-    if (!busy) {
-      clearBanner();
-      outputDirEl.classList.remove("bad");
-    }
+    if (!busy) clearErrors();
     renderSelection();
     return;
   }
@@ -654,8 +656,7 @@ window.onmessage = async (event: MessageEvent) => {
     const body = (await res.json().catch(() => ({}))) as SyncResponse;
     endExporting();
     if (res.ok) {
-      clearBanner();
-      outputDirEl.classList.remove("bad");
+      clearErrors();
       setStatus("");
       renderReport(payload.summary, {
         path: body.path || "written",
