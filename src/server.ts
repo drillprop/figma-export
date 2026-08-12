@@ -228,13 +228,10 @@ app.post("/sync", async (c) => {
 
     // Point "Open preview" at the richest preview written: the HTML wrapper if
     // one was needed, else the raw SVG/PNG, else nothing.
-    const previewFile = needsPreviewHtml
-      ? "preview.html"
-      : typeof payload.svg === "string"
-        ? "preview.svg"
-        : typeof payload.png === "string"
-          ? "preview.png"
-          : null;
+    let previewFile: string | null = null;
+    if (needsPreviewHtml) previewFile = "preview.html";
+    else if (typeof payload.svg === "string") previewFile = "preview.svg";
+    else if (typeof payload.png === "string") previewFile = "preview.png";
 
     console.log(`wrote ${payload.nodeName || payload.nodeId} → ${outDir}`);
     return c.json<SyncResponse>({

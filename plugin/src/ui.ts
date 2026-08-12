@@ -296,7 +296,6 @@ function techDetail(s: ExportSummary): HTMLElement {
 
 /** Ask the server to reveal a folder / open a file (the plugin iframe can't). */
 async function openPath(target: string, trigger: HTMLButtonElement): Promise<void> {
-  const original = trigger.textContent;
   trigger.disabled = true;
   try {
     const res = await fetch(`${serverBase()}/open`, {
@@ -310,7 +309,6 @@ async function openPath(target: string, trigger: HTMLButtonElement): Promise<voi
     setStatus(`Could not reach the server to open that.\n${String(err)}`, "err");
   } finally {
     trigger.disabled = false;
-    trigger.textContent = original;
   }
 }
 
