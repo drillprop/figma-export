@@ -6,7 +6,6 @@ import type {
   ExportPayload,
   ExportSummary,
   PickFolderResponse,
-  SvgAsset,
   SyncResponse,
 } from "../../src/shared/types";
 
@@ -27,6 +26,7 @@ type FromPlugin =
       payload: ExportPayload;
       svgBytes: Uint8Array | null;
       pngBytes: Uint8Array | null;
+      assets: { name: string; kind: "png" | "svg"; bytes: Uint8Array }[];
     };
 
 const byId = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -38,7 +38,7 @@ const outputDirEl = byId<HTMLInputElement>("outputDir");
 const browseEl = byId<HTMLButtonElement>("browse");
 const endpointEl = byId<HTMLInputElement>("endpoint");
 const previewEl = byId<HTMLSelectElement>("preview");
-const externalizeSvgEl = byId<HTMLInputElement>("externalizeSvg");
+const libraryEl = byId<HTMLInputElement>("library");
 const resolveRemoteEl = byId<HTMLInputElement>("resolveRemote");
 
 let selection: SelectionNode[] = [];
@@ -47,28 +47,6 @@ let busy = false;
 function setStatus(text: string, cls: "" | "err" | "progress" = ""): void {
   statusEl.textContent = text;
   statusEl.className = cls;
-}
-
-/** Pull raster images out of an SVG's inline data URIs into separate files, and
- * rewrite the references to point at `preview.assets/<name>`. Identical images
- * are deduped to one file. Pure-vector SVGs return unchanged with no assets. */
-function externalizeSvgImages(svg: string): { svg: string; assets: SvgAsset[] } {
-  const assets: SvgAsset[] = [];
-  const byData = new Map<string, string>(); // base64 data -> file name
-  const extFor = (mime: string): string =>
-    mime === "image/jpeg" ? "jpg" : mime === "image/gif" ? "gif" : mime === "image/png" ? "png" : "bin";
-
-  const pattern = /(xlink:href|href)="data:(image\/[a-zA-Z0-9.+-]+);base64,([^"]+)"/g;
-  const out = svg.replace(pattern, (_match, attr: string, mime: string, data: string) => {
-    let name = byData.get(data);
-    if (!name) {
-      name = `img-${assets.length}.${extFor(mime)}`;
-      byData.set(data, name);
-      assets.push({ name, base64: data });
-    }
-    return `${attr}="preview.assets/${name}"`;
-  });
-  return { svg: out, assets };
 }
 
 /** Encode bytes to base64 in chunks (avoids call-stack limits on big PNGs). */
@@ -271,6 +249,7 @@ btn.onclick = () => {
         type: "export",
         preview: previewEl.value,
         resolveRemote: resolveRemoteEl.checked,
+        library: libraryEl.checked,
         outputDir: outputDirEl.value.trim(),
         endpoint: endpointEl.value.trim(),
       },
@@ -306,23 +285,21 @@ window.onmessage = async (event: MessageEvent) => {
   if (msg.type !== "result") return;
 
   const payload = msg.payload;
-  let assetCount = 0;
-  if (msg.svgBytes) {
-    const raw = new TextDecoder().decode(msg.svgBytes);
-    // Default: keep images inline (self-contained SVG that renders anywhere).
-    // Opt-in externalization trades that for small, diff-friendly files.
-    if (externalizeSvgEl.checked) {
-      const { svg, assets } = externalizeSvgImages(raw);
-      payload.svg = svg;
-      if (assets.length) {
-        payload.svgAssets = assets;
-        assetCount = assets.length;
-      }
-    } else {
-      payload.svg = raw;
-    }
-  }
+  // Whole-node preview stays self-contained (images inline). The typed asset
+  // library owns preview.assets/ instead.
+  if (msg.svgBytes) payload.svg = new TextDecoder().decode(msg.svgBytes);
   if (msg.pngBytes) payload.png = bytesToBase64(msg.pngBytes);
+
+  const assets = msg.assets ?? [];
+  if (assets.length) {
+    payload.assets = assets.map((a) => ({
+      name: a.name,
+      kind: a.kind,
+      base64: bytesToBase64(a.bytes),
+    }));
+  }
+  const pngCount = assets.filter((a) => a.kind === "png").length;
+  const svgCount = assets.length - pngCount;
 
   setStatus("Sending to server…", "progress");
   try {
@@ -335,11 +312,11 @@ window.onmessage = async (event: MessageEvent) => {
     if (res.ok) {
       setStatus("");
       renderReport(payload.summary, body.path || "written");
-      if (assetCount > 0) {
+      if (assets.length > 0) {
         resultEl.appendChild(
           el("div", {
             class: "section",
-            text: `Extracted ${assetCount} image(s) → preview.assets/ · open preview.html to view`,
+            text: `Extracted ${assets.length} asset(s) → preview.assets/ · ${pngCount} png · ${svgCount} svg`,
           }),
         );
       }

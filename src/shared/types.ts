@@ -67,19 +67,23 @@ export interface ExportPayload {
   node: SerializedNode;
   components: ComponentEntry[];
   remoteMasters: SerializedNode[];
-  /** SVG preview as text (with embedded images externalized to `svgAssets`). */
+  /** SVG preview as text (self-contained, with images inline). */
   svg?: string;
-  /** Images pulled out of the SVG, written next to it under preview.assets/. */
-  svgAssets?: SvgAsset[];
   /** PNG preview as base64. */
   png?: string;
+  /** Typed asset library: every classified sub-asset, written to preview.assets/. */
+  assets?: AssetFile[];
 }
 
-/** A raster image extracted from an SVG's inline data URI. */
-export interface SvgAsset {
-  /** File name, referenced from the SVG as `preview.assets/<name>`. */
+/** One file in the typed asset library. Rasters (image fills) are exported as
+ * PNG; vector-only component/instance icons as SVG. Deduped by semantic identity
+ * (image hash / main component key), so one entry per distinct asset. */
+export interface AssetFile {
+  /** File name written under preview.assets/, e.g. "close.svg" or "avatar.png". */
   name: string;
-  /** The image bytes, base64-encoded. */
+  /** Which exporter produced it. */
+  kind: "png" | "svg";
+  /** The file bytes, base64-encoded. */
   base64: string;
 }
 

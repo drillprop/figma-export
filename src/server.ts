@@ -19,35 +19,6 @@ const app = new Hono();
 // server binds to 127.0.0.1 only, so it is never reachable off the machine.
 app.use("/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-/** Wrap an SVG (with external image refs) inline in HTML so it renders from a
- * plain file:// — inline `<svg>` isn't in the browser's SVG secure-static-mode,
- * unlike an SVG loaded as `<img>` or opened directly, so its external images load. */
-function previewHtml(title: string, svg: string): string {
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>${escapeHtml(title)} — preview</title>
-    <style>
-      body { margin: 0; background: #f5f5f5; display: flex; justify-content: center; padding: 24px; }
-      svg { max-width: 100%; height: auto; background: #fff; box-shadow: 0 1px 10px rgba(0, 0, 0, 0.15); }
-    </style>
-  </head>
-  <body>
-${svg}
-  </body>
-</html>
-`;
-}
-
 /** Keep an untrusted name to a safe single path segment (no traversal). */
 function slug(value: unknown, fallback: string): string {
   const cleaned = String(value ?? "")
@@ -126,6 +97,9 @@ app.post("/sync", async (c) => {
   try {
     await mkdir(outDir, { recursive: true });
 
+    const assets = payload.assets ?? [];
+    const assetPngCount = assets.filter((a) => a.kind === "png").length;
+
     const meta = {
       fileKey: payload.fileKey ?? null,
       fileName: payload.fileName ?? null,
@@ -136,28 +110,26 @@ app.post("/sync", async (c) => {
       remoteMasterCount: payload.remoteMasters?.length ?? 0,
       hasSvg: typeof payload.svg === "string",
       hasPng: typeof payload.png === "string",
-      svgAssetCount: payload.svgAssets?.length ?? 0,
-      hasPreviewHtml: (payload.svgAssets?.length ?? 0) > 0 && typeof payload.svg === "string",
+      assetCount: assets.length,
+      assetPngCount,
+      assetSvgCount: assets.length - assetPngCount,
       summary: payload.summary ?? null,
     };
 
     const hasRemoteMasters = (payload.remoteMasters?.length ?? 0) > 0;
 
-    // Externalized SVG: write the extracted images, plus a preview.html that
-    // inlines the SVG so the (external) images actually render from file://.
-    const svgAssets = payload.svgAssets ?? [];
-    if (svgAssets.length > 0 && typeof payload.svg === "string") {
+    // Typed asset library: raster nodes → .png, vector icon components → .svg.
+    if (assets.length > 0) {
       const assetsDir = path.join(outDir, "preview.assets");
       await mkdir(assetsDir, { recursive: true });
-      await Promise.all([
-        ...svgAssets.map((asset) =>
-          writeFile(path.join(assetsDir, slug(asset.name, "img")), Buffer.from(asset.base64, "base64")),
+      await Promise.all(
+        assets.map((asset) =>
+          writeFile(
+            path.join(assetsDir, slug(asset.name, "asset")),
+            Buffer.from(asset.base64, "base64"),
+          ),
         ),
-        writeFile(
-          path.join(outDir, "preview.html"),
-          previewHtml(payload.nodeName || payload.nodeId || "preview", payload.svg),
-        ),
-      ]);
+      );
     }
 
     await Promise.all([

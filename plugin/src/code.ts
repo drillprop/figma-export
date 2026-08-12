@@ -266,6 +266,129 @@ function pngSettings(node: AnyNode): ExportSettings {
   return { format: "PNG", constraint: { type: "SCALE", value: 2 } };
 }
 
+// --- typed asset library ------------------------------------------------
+const MAX_ASSETS = 500; // stop extracting past this (huge trees / OOM guard)
+const CONTAINER_TYPES = new Set(["FRAME", "GROUP", "COMPONENT", "INSTANCE", "COMPONENT_SET"]);
+
+/** A file destined for preview.assets/. Bytes are base64-encoded later, in the UI. */
+interface RawAsset {
+  name: string;
+  kind: "png" | "svg";
+  bytes: Uint8Array;
+}
+
+/** Keep an untrusted node name to a safe, readable single path segment. */
+function slugName(value: unknown, fallback: string): string {
+  const cleaned = String(value ?? "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return cleaned || fallback;
+}
+
+/** The first visible IMAGE paint's hash, or null when the node has no image fill. */
+function imageHashOf(node: AnyNode): string | null {
+  const fills = tryRead(node, "fills");
+  if (!Array.isArray(fills)) return null;
+  for (const fill of fills) {
+    if (fill && fill.type === "IMAGE" && fill.visible !== false) return fill.imageHash ?? "image";
+  }
+  return null;
+}
+
+/** True when the subtree is vector-only: no TEXT and no image fills anywhere.
+ * Invisible descendants are ignored (they don't render into the icon). */
+function isVectorOnly(node: AnyNode): boolean {
+  if (node.visible === false) return true;
+  if (node.type === "TEXT") return false;
+  if (imageHashOf(node) !== null) return false;
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) if (!isVectorOnly(child)) return false;
+  }
+  return true;
+}
+
+/** The dedup key + readable name for an icon (main component identity). */
+async function iconIdentity(node: AnyNode): Promise<{ key: string; name: string }> {
+  if (node.type === "COMPONENT") return { key: node.key || node.id, name: node.name };
+  if (node.type === "INSTANCE") {
+    try {
+      const main = await node.getMainComponentAsync();
+      if (main) return { key: main.key || main.id, name: main.name };
+    } catch {
+      /* detached / unresolved */
+    }
+  }
+  return { key: node.id, name: node.name };
+}
+
+/**
+ * Walk the tree and extract a typed asset library. Each node is classified:
+ * raster (image fill) → PNG, icon (vector-only component/instance) → SVG, else
+ * descend. Shape nodes stop the walk; a container with an image background is
+ * still exported but its children are traversed (so icons on a photo survive).
+ * Deduped by image hash / component key; invisible and zero-area nodes skipped.
+ */
+async function collectAssets(root: AnyNode): Promise<RawAsset[]> {
+  const assets: RawAsset[] = [];
+  const seen = new Set<string>(); // dedup keys: "img:<hash>" / "icon:<key>"
+  const usedNames = new Set<string>();
+
+  const uniqueName = (base: string, ext: string): string => {
+    let name = `${base}.${ext}`;
+    for (let i = 2; usedNames.has(name); i++) name = `${base}-${i}.${ext}`;
+    usedNames.add(name);
+    return name;
+  };
+
+  const walk = async (node: AnyNode): Promise<void> => {
+    if (!node || node.visible === false || assets.length >= MAX_ASSETS) return;
+    const width = tryRead(node, "width");
+    const height = tryRead(node, "height");
+    if ((typeof width === "number" && width <= 0) || (typeof height === "number" && height <= 0)) {
+      return;
+    }
+
+    const hash = imageHashOf(node);
+    if (hash !== null && "exportAsync" in node) {
+      const isContainer = CONTAINER_TYPES.has(node.type);
+      if (!seen.has(`img:${hash}`)) {
+        seen.add(`img:${hash}`);
+        try {
+          const bytes = (await node.exportAsync(pngSettings(node))) as Uint8Array;
+          assets.push({ name: uniqueName(slugName(node.name, "img"), "png"), kind: "png", bytes });
+        } catch (err) {
+          console.warn(`[figma-export] PNG asset export failed for "${node.name}":`, err);
+        }
+      }
+      if (!isContainer) return; // shape node: stop; container: fall through to descend
+    } else if (
+      (node.type === "COMPONENT" || node.type === "INSTANCE") &&
+      "exportAsync" in node &&
+      isVectorOnly(node)
+    ) {
+      const { key, name } = await iconIdentity(node);
+      if (!seen.has(`icon:${key}`)) {
+        seen.add(`icon:${key}`);
+        try {
+          const bytes = (await node.exportAsync({ format: "SVG" })) as Uint8Array;
+          assets.push({ name: uniqueName(slugName(name, "icon"), "svg"), kind: "svg", bytes });
+        } catch (err) {
+          console.warn(`[figma-export] SVG asset export failed for "${name}":`, err);
+        }
+      }
+      return; // icon: stop descending
+    }
+
+    if (Array.isArray(node.children)) {
+      for (const child of node.children) await walk(child);
+    }
+  };
+
+  await walk(root);
+  return assets;
+}
+
 /** Build a human/AI-readable summary of what an export contains. */
 function summarize(
   node: SerializedNode,
@@ -345,6 +468,7 @@ interface ExportMessage {
   type: "export";
   preview: PreviewFormat;
   resolveRemote: boolean;
+  library: boolean;
   outputDir: string;
   endpoint: string;
 }
@@ -415,6 +539,13 @@ figma.ui.onmessage = async (msg: ExportMessage) => {
       }
     }
 
+    let assets: RawAsset[] = [];
+    if (msg.library && "exportAsync" in target) {
+      figma.ui.postMessage({ type: "progress", message: "Extracting typed assets…" });
+      assets = await collectAssets(target);
+      console.log(`[figma-export] extracted ${assets.length} typed asset(s)`);
+    }
+
     const summary = summarize(node, components, remoteMasters);
     summary.truncated = ctx.truncated;
     summary.truncatedAt = ctx.truncated ? MAX_NODES : null;
@@ -433,7 +564,7 @@ figma.ui.onmessage = async (msg: ExportMessage) => {
       remoteMasters,
     };
 
-    figma.ui.postMessage({ type: "result", payload, svgBytes, pngBytes });
+    figma.ui.postMessage({ type: "result", payload, svgBytes, pngBytes, assets });
   } catch (err) {
     figma.ui.postMessage({ type: "error", message: String((err as Error)?.message ?? err) });
   }
