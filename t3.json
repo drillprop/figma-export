@@ -4,7 +4,7 @@
     {
       "name": "Install deps",
       "command": "pnpm install",
-      "icon": "download",
+      "icon": "configure",
       "runOnWorktreeCreate": true
     },
     {
@@ -20,17 +20,17 @@
     {
       "name": "Build plugin",
       "command": "pnpm build:plugin",
-      "icon": "hammer"
+      "icon": "build"
     },
     {
       "name": "Watch plugin",
       "command": "pnpm dev:plugin",
-      "icon": "eye"
+      "icon": "debug"
     },
     {
       "name": "Type check",
       "command": "pnpm check-types",
-      "icon": "check"
+      "icon": "test"
     }
   ]
 }
