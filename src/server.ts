@@ -1,10 +1,14 @@
+import { execFile } from "node:child_process";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { ExportPayload, SyncResponse } from "./shared/types";
+import type { ExportPayload, PickFolderResponse, SyncResponse } from "./shared/types";
+
+const execFileAsync = promisify(execFile);
 
 const PORT = Number(process.env.PORT ?? 3579);
 const DEFAULT_OUT = (process.env.OUT_DIR ?? "").trim();
@@ -13,7 +17,7 @@ const app = new Hono();
 
 // The plugin UI posts from a `null` origin (iframe), so allow any origin. This
 // server binds to 127.0.0.1 only, so it is never reachable off the machine.
-app.use("/*", cors({ origin: "*", allowMethods: ["POST", "OPTIONS"] }));
+app.use("/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
 
 /** Keep an untrusted name to a safe single path segment (no traversal). */
 function slug(value: unknown, fallback: string): string {
@@ -25,6 +29,32 @@ function slug(value: unknown, fallback: string): string {
 }
 
 app.get("/", (c) => c.text("figma-export server — POST exports to /sync"));
+
+/**
+ * Open a native OS folder-chooser and return the absolute path. The Figma plugin
+ * iframe can't do this (filesystem APIs are blocked there), so the plugin calls
+ * here and the server — a real OS process — shows the dialog. macOS only for now.
+ */
+app.get("/pick-folder", async (c) => {
+  if (process.platform !== "darwin") {
+    return c.json<PickFolderResponse>(
+      { error: "Folder picker is macOS-only so far — type the path instead." },
+      501,
+    );
+  }
+  const script =
+    'POSIX path of (choose folder with prompt "Select the output folder for figma-export")';
+  try {
+    const { stdout } = await execFileAsync("osascript", ["-e", script]);
+    return c.json<PickFolderResponse>({ path: stdout.trim() });
+  } catch (error) {
+    const detail = String((error as { stderr?: string }).stderr ?? (error as Error).message ?? error);
+    if (detail.includes("User canceled") || detail.includes("-128")) {
+      return c.json<PickFolderResponse>({ cancelled: true });
+    }
+    return c.json<PickFolderResponse>({ error: `Folder picker failed: ${detail.trim()}` }, 500);
+  }
+});
 
 app.post("/sync", async (c) => {
   let payload: ExportPayload;

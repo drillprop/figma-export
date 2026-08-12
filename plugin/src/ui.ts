@@ -2,7 +2,12 @@
 // live selection, receives the serialized payload from the main thread, and
 // POSTs it to the local figma-export server (the sandbox main thread has no
 // `fetch`; only this iframe does).
-import type { ExportPayload, ExportSummary, SyncResponse } from "../../src/shared/types";
+import type {
+  ExportPayload,
+  ExportSummary,
+  PickFolderResponse,
+  SyncResponse,
+} from "../../src/shared/types";
 
 interface SelectionNode {
   id: string;
@@ -29,6 +34,7 @@ const statusEl = byId<HTMLDivElement>("status");
 const resultEl = byId<HTMLDivElement>("result");
 const btn = byId<HTMLButtonElement>("export");
 const outputDirEl = byId<HTMLInputElement>("outputDir");
+const browseEl = byId<HTMLButtonElement>("browse");
 const endpointEl = byId<HTMLInputElement>("endpoint");
 const previewEl = byId<HTMLSelectElement>("preview");
 const resolveRemoteEl = byId<HTMLInputElement>("resolveRemote");
@@ -180,6 +186,35 @@ function renderSelection(): void {
   btn.disabled = !first;
   btn.textContent = first ? `Export “${first.name}”` : "Select a layer to export";
 }
+
+/** Derive the server base (e.g. http://localhost:3579) from the endpoint field. */
+function serverBase(): string {
+  return endpointEl.value.trim().replace(/\/sync\/?$/, "");
+}
+
+browseEl.onclick = async () => {
+  const original = browseEl.textContent;
+  browseEl.disabled = true;
+  browseEl.textContent = "Choosing…";
+  setStatus("Opening folder picker — look for a system dialog…", "progress");
+  try {
+    const res = await fetch(`${serverBase()}/pick-folder`);
+    const body = (await res.json().catch(() => ({}))) as PickFolderResponse;
+    if (body.path) {
+      outputDirEl.value = body.path;
+      setStatus("");
+    } else if (body.cancelled) {
+      setStatus("");
+    } else {
+      setStatus(body.error || "Folder picker failed.", "err");
+    }
+  } catch (err) {
+    setStatus(`Could not reach the server for the picker.\n${String(err)}`, "err");
+  } finally {
+    browseEl.disabled = false;
+    browseEl.textContent = original;
+  }
+};
 
 btn.onclick = () => {
   if (!selection[0]) return;

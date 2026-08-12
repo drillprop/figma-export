@@ -41,8 +41,9 @@ and pick `plugin/manifest.json`.
    ```
 
 2. In Figma, run **Plugins → Development → Export to Repo**.
-3. Set the **Output folder** (absolute path to write into — remembered between
-   runs). Blank uses the server's `OUT_DIR`.
+3. Set the **Output folder**: click **Browse…** to pick it with the native macOS
+   folder dialog (the server opens it — the plugin sandbox can't), or type an
+   absolute path. It's remembered between runs; blank uses the server's `OUT_DIR`.
 4. **Select** a frame/component — the Export button shows its name.
 5. Click **Export**. Files are written to:
 

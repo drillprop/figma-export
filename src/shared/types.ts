@@ -78,3 +78,12 @@ export interface SyncResponse {
   path?: string;
   error?: string;
 }
+
+/** Response from GET /pick-folder (server opens a native OS folder dialog). */
+export interface PickFolderResponse {
+  /** Absolute path the user chose. */
+  path?: string;
+  /** User dismissed the dialog. */
+  cancelled?: boolean;
+  error?: string;
+}

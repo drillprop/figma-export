@@ -56,6 +56,17 @@
       }
       button:disabled { opacity: 0.5; cursor: default; }
 
+      .field-row { display: flex; gap: 6px; align-items: stretch; }
+      .field-row input { flex: 1; }
+      button.secondary {
+        margin-top: 0;
+        width: auto;
+        white-space: nowrap;
+        background: var(--chip);
+        color: inherit;
+        border: 1px solid var(--border);
+      }
+
       #status { margin-top: 12px; white-space: pre-wrap; word-break: break-word; }
       #status.err { color: var(--err); }
       #status.progress { color: var(--muted); }
@@ -141,7 +152,10 @@
     </div>
 
     <label for="outputDir">Output folder</label>
-    <input id="outputDir" type="text" placeholder="/Users/you/Programming/my-repo/figma-export" />
+    <div class="field-row">
+      <input id="outputDir" type="text" placeholder="/Users/you/Programming/my-repo/figma-export" />
+      <button type="button" id="browse" class="secondary">Browse…</button>
+    </div>
     <div class="hint">Absolute path to write into. Blank ⇒ the server's OUT_DIR.</div>
 
     <label for="endpoint">Dev server endpoint</label>
