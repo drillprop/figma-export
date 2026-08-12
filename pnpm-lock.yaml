@@ -21,6 +21,9 @@ importers:
       '@ai-hero/sandcastle':
         specifier: ^0.12.0
         version: 0.12.0
+      '@clack/prompts':
+        specifier: ^1.7.0
+        version: 1.7.0
       '@figma/plugin-typings':
         specifier: ^1.100.0
         version: 1.133.0
