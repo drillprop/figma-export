@@ -6,6 +6,7 @@ import type {
   ExportPayload,
   ExportSummary,
   PickFolderResponse,
+  SvgAsset,
   SyncResponse,
 } from "../../src/shared/types";
 
@@ -45,6 +46,28 @@ let busy = false;
 function setStatus(text: string, cls: "" | "err" | "progress" = ""): void {
   statusEl.textContent = text;
   statusEl.className = cls;
+}
+
+/** Pull raster images out of an SVG's inline data URIs into separate files, and
+ * rewrite the references to point at `preview.assets/<name>`. Identical images
+ * are deduped to one file. Pure-vector SVGs return unchanged with no assets. */
+function externalizeSvgImages(svg: string): { svg: string; assets: SvgAsset[] } {
+  const assets: SvgAsset[] = [];
+  const byData = new Map<string, string>(); // base64 data -> file name
+  const extFor = (mime: string): string =>
+    mime === "image/jpeg" ? "jpg" : mime === "image/gif" ? "gif" : mime === "image/png" ? "png" : "bin";
+
+  const pattern = /(xlink:href|href)="data:(image\/[a-zA-Z0-9.+-]+);base64,([^"]+)"/g;
+  const out = svg.replace(pattern, (_match, attr: string, mime: string, data: string) => {
+    let name = byData.get(data);
+    if (!name) {
+      name = `img-${assets.length}.${extFor(mime)}`;
+      byData.set(data, name);
+      assets.push({ name, base64: data });
+    }
+    return `${attr}="preview.assets/${name}"`;
+  });
+  return { svg: out, assets };
 }
 
 /** Encode bytes to base64 in chunks (avoids call-stack limits on big PNGs). */
@@ -282,7 +305,16 @@ window.onmessage = async (event: MessageEvent) => {
   if (msg.type !== "result") return;
 
   const payload = msg.payload;
-  if (msg.svgBytes) payload.svg = new TextDecoder().decode(msg.svgBytes);
+  let assetCount = 0;
+  if (msg.svgBytes) {
+    const raw = new TextDecoder().decode(msg.svgBytes);
+    const { svg, assets } = externalizeSvgImages(raw);
+    payload.svg = svg;
+    if (assets.length) {
+      payload.svgAssets = assets;
+      assetCount = assets.length;
+    }
+  }
   if (msg.pngBytes) payload.png = bytesToBase64(msg.pngBytes);
 
   setStatus("Sending to server…", "progress");
@@ -296,6 +328,14 @@ window.onmessage = async (event: MessageEvent) => {
     if (res.ok) {
       setStatus("");
       renderReport(payload.summary, body.path || "written");
+      if (assetCount > 0) {
+        resultEl.appendChild(
+          el("div", {
+            class: "section",
+            text: `Extracted ${assetCount} embedded image(s) → preview.assets/`,
+          }),
+        );
+      }
     } else {
       setStatus(`Server ${res.status}: ${body.error || "write failed"}`, "err");
     }

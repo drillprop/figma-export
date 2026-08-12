@@ -67,10 +67,20 @@ export interface ExportPayload {
   node: SerializedNode;
   components: ComponentEntry[];
   remoteMasters: SerializedNode[];
-  /** SVG preview as text. */
+  /** SVG preview as text (with embedded images externalized to `svgAssets`). */
   svg?: string;
+  /** Images pulled out of the SVG, written next to it under preview.assets/. */
+  svgAssets?: SvgAsset[];
   /** PNG preview as base64. */
   png?: string;
+}
+
+/** A raster image extracted from an SVG's inline data URI. */
+export interface SvgAsset {
+  /** File name, referenced from the SVG as `preview.assets/<name>`. */
+  name: string;
+  /** The image bytes, base64-encoded. */
+  base64: string;
 }
 
 export interface SyncResponse {

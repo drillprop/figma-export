@@ -107,10 +107,21 @@ app.post("/sync", async (c) => {
       remoteMasterCount: payload.remoteMasters?.length ?? 0,
       hasSvg: typeof payload.svg === "string",
       hasPng: typeof payload.png === "string",
+      svgAssetCount: payload.svgAssets?.length ?? 0,
       summary: payload.summary ?? null,
     };
 
     const hasRemoteMasters = (payload.remoteMasters?.length ?? 0) > 0;
+    const svgAssets = payload.svgAssets ?? [];
+    if (svgAssets.length > 0) {
+      const assetsDir = path.join(outDir, "preview.assets");
+      await mkdir(assetsDir, { recursive: true });
+      await Promise.all(
+        svgAssets.map((asset) =>
+          writeFile(path.join(assetsDir, slug(asset.name, "img")), Buffer.from(asset.base64, "base64")),
+        ),
+      );
+    }
 
     await Promise.all([
       writeFile(path.join(outDir, "node.json"), JSON.stringify(payload.node, null, 2)),

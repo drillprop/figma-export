@@ -54,7 +54,14 @@ and pick `plugin/manifest.json`.
      meta.json           ids, timestamp, and the summary
      remote-masters.json resolved library-component definitions (if any)
      preview.svg | .png   visual reference
+     preview.assets/      images pulled out of the SVG (see below)
    ```
+
+   When the preview is **SVG**, any raster images Figma would inline as huge
+   `data:…;base64` blobs are instead written as real files under
+   `preview.assets/` and referenced from the SVG (`href="preview.assets/img-0.png"`),
+   so the committed SVG stays small and diff-friendly. Pure-vector nodes produce
+   no assets.
 
 The path you give is the exact base; want a `figma-export/` subfolder? Include
 it in the path. The server refuses to write if the folder doesn't exist.
