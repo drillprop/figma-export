@@ -1,0 +1,288 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Ticket #9 (Redesign the post-export report).
+  Question: what does a public user see AFTER a successful export, instead of today's dense dump?
+  Three takes on the content model: ?variant=A|B|C or the bottom bar / arrow keys.
+  "⚠ warnings" button simulates the truncated / preview-skipped / linked-component-failed cases
+  so the plain-language warning copy can be judged. ☾/☀ toggles theme. Open the file in a browser.
+
+  Sample data mirrors today's ExportSummary (plugin/src/ui.ts): target, totalNodes, nodeTypes,
+  variant sets + axes, components local/remote, remoteMastersResolved + errors, textSamples.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Prototype — export report (#9)</title>
+    <style>
+      :root {
+        --figma-color-bg: #ffffff; --figma-color-bg-secondary: #f5f5f5; --figma-color-bg-hover: rgba(0,0,0,.06);
+        --figma-color-bg-brand: #0d99ff; --figma-color-bg-success: #14ae5c;
+        --figma-color-bg-warn-tint: rgba(242,158,34,.12); --figma-color-bg-success-tint: rgba(20,174,92,.12);
+        --figma-color-text: #1a1a1a; --figma-color-text-secondary: #7a7a7a; --figma-color-text-warn: #a86500;
+        --figma-color-border: rgba(0,0,0,.1); --figma-color-border-strong: rgba(0,0,0,.3); --chip: rgba(0,0,0,.06);
+      }
+      body.dark {
+        --figma-color-bg: #2c2c2c; --figma-color-bg-secondary: #383838; --figma-color-bg-hover: rgba(255,255,255,.08);
+        --figma-color-bg-brand: #0d99ff; --figma-color-bg-success: #14ae5c;
+        --figma-color-bg-warn-tint: rgba(242,158,34,.16); --figma-color-bg-success-tint: rgba(20,174,92,.16);
+        --figma-color-text: #fff; --figma-color-text-secondary: #9c9c9c; --figma-color-text-warn: #ffcf7a;
+        --figma-color-border: rgba(255,255,255,.12); --figma-color-border-strong: rgba(255,255,255,.35); --chip: rgba(255,255,255,.1);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; font-family: Inter, -apple-system, "Segoe UI", sans-serif;
+        background: #6b6b6b; display: flex; justify-content: center; align-items: flex-start;
+        padding: 40px 16px 96px; min-height: 100vh;
+      }
+      .panel {
+        width: 340px; background: var(--figma-color-bg); color: var(--figma-color-text);
+        border-radius: 8px; box-shadow: 0 12px 40px rgba(0,0,0,.45); overflow: hidden;
+        font-size: 11px; line-height: 16px;
+      }
+      .inner { padding: 12px; }
+
+      /* fake "panel above the report" so the report is judged in context */
+      .ghosted { opacity: .38; pointer-events: none; }
+      .ghost-btn {
+        height: 32px; border-radius: 6px; background: var(--figma-color-bg-brand); color: #fff;
+        display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;
+      }
+      .divider { height: 1px; background: var(--figma-color-border); margin: 14px 0; }
+
+      /* success header */
+      .success {
+        display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; color: var(--figma-color-bg-success);
+      }
+      .success .tick {
+        width: 20px; height: 20px; border-radius: 999px; background: var(--figma-color-bg-success); color: #fff;
+        display: flex; align-items: center; justify-content: center; font-size: 12px; flex: none;
+      }
+      .dest {
+        margin-top: 10px; padding: 8px 10px; border: 1px solid var(--figma-color-border);
+        border-radius: 6px; background: var(--figma-color-bg-secondary);
+        display: flex; align-items: center; gap: 8px;
+      }
+      .dest .p { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 10px; word-break: break-all; }
+      .btn {
+        height: 30px; border: 0; border-radius: 6px; padding: 0 12px;
+        background: var(--figma-color-bg-brand); color: #fff; font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;
+      }
+      .btn.sm { height: 26px; font-size: 11px; padding: 0 9px; }
+      .btn.ghost { background: var(--figma-color-bg-secondary); color: var(--figma-color-text); border: 1px solid var(--figma-color-border); }
+      .actions { display: flex; gap: 6px; margin-top: 10px; }
+      .actions .btn { flex: 1; }
+
+      .wrote { margin-top: 12px; }
+      .wrote-line { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
+      .wrote-line .k { color: var(--figma-color-text-secondary); }
+      .wrote-line .v { font-weight: 600; }
+      .wrote-plain { margin-top: 10px; color: var(--figma-color-text); }
+
+      /* warning banner */
+      .warn {
+        margin-top: 12px; padding: 9px 10px; border-radius: 6px;
+        background: var(--figma-color-bg-warn-tint); border: 1px solid rgba(242,158,34,.4);
+        color: var(--figma-color-text-warn); font-size: 11px;
+      }
+      .warn + .warn { margin-top: 6px; }
+      .warn b { font-weight: 700; }
+
+      /* expandable warnings */
+      details.warnbox { margin-top: 12px; }
+      details.warnbox > summary {
+        list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px;
+        padding: 9px 10px; border-radius: 6px; font-weight: 700; font-size: 11px;
+        background: var(--figma-color-bg-warn-tint); border: 1px solid rgba(242,158,34,.4);
+        color: var(--figma-color-text-warn);
+      }
+      details.warnbox > summary::-webkit-details-marker { display: none; }
+      details.warnbox > summary .caret { transition: transform .15s; margin-left: auto; }
+      details.warnbox[open] > summary .caret { transform: rotate(90deg); }
+      details.warnbox[open] > summary { border-radius: 6px 6px 0 0; }
+      .warnbody { border: 1px solid rgba(242,158,34,.4); border-top: 0; border-radius: 0 0 6px 6px; padding: 8px; }
+      .warnbody .warn { margin: 0; border: 0; }
+      .warnbody .warn + .warn { margin-top: 4px; }
+
+      /* section titles + chips + stats (technical detail) */
+      .section { margin-top: 16px; }
+      .section-title {
+        font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+        color: var(--figma-color-text-secondary); margin-bottom: 8px;
+      }
+      .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .stat { border: 1px solid var(--figma-color-border); border-radius: 8px; padding: 8px 10px; background: var(--figma-color-bg-secondary); }
+      .stat-val { font-size: 16px; font-weight: 700; }
+      .stat-label { color: var(--figma-color-text-secondary); font-size: 11px; }
+      .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+      .chip { background: var(--chip); border-radius: 5px; padding: 2px 7px; font-size: 11px; white-space: nowrap; }
+      .chip .n { color: var(--figma-color-text-secondary); margin-left: 4px; }
+      .axis { display: flex; gap: 6px; align-items: baseline; margin: 3px 0; }
+      .axis-key { color: var(--figma-color-text-secondary); min-width: 52px; font-size: 11px; }
+      .samples { display: flex; flex-direction: column; gap: 2px; }
+      .sample { color: var(--figma-color-text-secondary); font-style: italic; }
+      .badge { display: inline-flex; align-items: center; border-radius: 5px; padding: 2px 8px; font-size: 11px; font-weight: 600; line-height: 1.4; }
+      .badge.ok { background: var(--figma-color-bg-success-tint); color: var(--figma-color-bg-success); border: 1px solid rgba(20,174,92,.4); }
+      .badge.warn { background: var(--figma-color-bg-warn-tint); color: var(--figma-color-text-warn); border: 1px solid rgba(242,158,34,.4); }
+      .muted { color: var(--figma-color-text-secondary); }
+
+      details.more { margin-top: 14px; border-top: 1px solid var(--figma-color-border); padding-top: 12px; }
+      details.more > summary {
+        list-style: none; cursor: pointer; font-weight: 600; font-size: 11px; color: var(--figma-color-text-secondary);
+        display: flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: .04em;
+      }
+      details.more > summary::-webkit-details-marker { display: none; }
+      details.more > summary .caret { transition: transform .15s; }
+      details.more[open] > summary .caret { transform: rotate(90deg); }
+      .link { color: var(--figma-color-bg-brand); cursor: pointer; }
+      .hidden { display: none !important; }
+
+      .switcher {
+        position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+        display: flex; align-items: center; gap: 4px; z-index: 9;
+        background: #111; color: #fff; border-radius: 999px; padding: 6px 8px; box-shadow: 0 6px 24px rgba(0,0,0,.5); font-size: 12px;
+      }
+      .switcher button { background: #2a2a2a; color: #fff; border: 0; border-radius: 999px; width: 26px; height: 26px; cursor: pointer; font-size: 14px; }
+      .switcher button.wide { width: auto; padding: 0 10px; }
+      .switcher button.armed { background: #a86500; }
+      .switcher .vlabel { padding: 0 8px; min-width: 190px; text-align: center; font-weight: 600; }
+      .switcher .sep { width: 1px; height: 18px; background: #444; margin: 0 2px; }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <div class="inner">
+        <!-- ghosted panel above, so the report reads in context -->
+        <div class="ghosted">
+          <div class="ghost-btn">Export “Button / Primary”</div>
+        </div>
+        <div class="divider"></div>
+        <div id="report"></div>
+      </div>
+    </div>
+
+    <div class="switcher">
+      <button onclick="cycle(-1)">‹</button>
+      <span class="vlabel" id="vlabel"></span>
+      <button onclick="cycle(1)">›</button>
+      <span class="sep"></span>
+      <button class="wide" id="warnbtn" onclick="toggleWarn()">⚠ warnings</button>
+      <button class="wide" onclick="toggleTheme()" id="themebtn">☾</button>
+    </div>
+
+    <script>
+      // --- sample data, mirroring today's ExportSummary ---
+      const S = {
+        path: "~/Programming/my-repo/figma-export",
+        output: "Folder of assets",
+        wrote: { data: "component.json", preview: "preview.html", icons: 12, images: 3 },
+        target: { name: "Button / Primary", type: "Component set" },
+        totalNodes: 214,
+        components: { total: 34, local: 30, remote: 4 },
+        remoteMastersResolved: 3,
+        textLayerCount: 22,
+        nodeTypes: [["VECTOR", 88], ["FRAME", 40], ["INSTANCE", 30], ["TEXT", 22], ["COMPONENT", 4]],
+        sets: [{ name: "Button", axes: { State: ["Default", "Hover", "Pressed", "Disabled"], Size: ["S", "M", "L"] } }],
+        textSamples: ["Submit", "Cancel", "Learn more"],
+      };
+      const WARN = {
+        remoteError: { name: "Icon / Star", why: "published from another file that isn’t enabled here — saved as a reference only" },
+      };
+
+      let showWarn = false;
+      const VARIANTS = [["A", "Receipt + Details"], ["B", "Flat & calm"], ["C", "Minimal"]];
+      function cur() {
+        const v = new URLSearchParams(location.search).get("variant");
+        return VARIANTS.some(([k]) => k === v) ? v : "A";
+      }
+
+      const esc = (s) => s;
+      function successHead() {
+        return `<div class="success"><span class="tick">✓</span> Export saved</div>
+          <div class="dest"><span class="p">${S.path}</span><button class="btn sm" onclick="return false">Open folder</button></div>
+          <div class="actions">
+            <button class="btn ghost" onclick="return false">Open preview</button>
+            <button class="btn ghost" onclick="return false">Export another</button>
+          </div>`;
+      }
+      function plainWrote() {
+        return `<div class="wrote-plain">Saved your <b>${S.target.name}</b> as a <b>folder of assets</b> — a preview you can open,
+          plus <b>${S.wrote.icons} icons</b> and <b>${S.wrote.images} images</b> as separate files.</div>`;
+      }
+      function warnBanners() {
+        if (!showWarn) return "";
+        const items = [
+          `<b>Very large selection.</b> We saved the first 5,000 layers — export a smaller frame to include everything.`,
+          `<b>Preview image skipped</b> — this artwork was too complex for an SVG preview. Everything else was saved; try the <b>Image (PNG)</b> preview next time.`,
+          `<b>1 linked component couldn’t be loaded</b> — “${WARN.remoteError.name}” was ${WARN.remoteError.why}.`,
+        ];
+        // expandable: calm summary line by default, plain-language detail on expand
+        return `<details class="warnbox">
+          <summary>⚠ ${items.length} things worth knowing<span class="caret">▸</span></summary>
+          <div class="warnbody">${items.map((i) => `<div class="warn">${i}</div>`).join("")}</div>
+        </details>`;
+      }
+      // technical detail block (shared by A's disclosure + B's flat body)
+      function techDetail() {
+        const tiles = `<div class="stats">
+          <div class="stat"><div class="stat-val">${S.totalNodes}</div><div class="stat-label">layers</div></div>
+          <div class="stat"><div class="stat-val">${S.components.total}</div><div class="stat-label">components · ${S.components.local} local / ${S.components.remote} linked</div></div>
+          <div class="stat"><div class="stat-val">${S.textLayerCount}</div><div class="stat-label">text layers</div></div>
+          <div class="stat"><div class="stat-val">svg</div><div class="stat-label">preview</div></div>
+        </div>`;
+        const types = `<div class="section"><div class="section-title">Layer types</div><div class="chips">${
+          S.nodeTypes.map(([t, n]) => `<span class="chip">${t}<span class="n">${n}</span></span>`).join("")
+        }</div></div>`;
+        const sets = `<div class="section"><div class="section-title">Variant sets (${S.sets.length})</div>${
+          S.sets.map((set) => `<div style="font-weight:600;margin-bottom:4px">${set.name}</div>${
+            Object.entries(set.axes).map(([k, vs]) => `<div class="axis"><div class="axis-key">${k}</div><div class="chips">${
+              vs.map((v) => `<span class="chip">${v}</span>`).join("")
+            }</div></div>`).join("")
+          }`).join("")
+        }</div>`;
+        const remote = `<div class="section"><div class="section-title">Linked components</div>
+          <div class="chips"><span class="badge ok">${S.remoteMastersResolved} loaded</span>${
+            showWarn ? `<span class="badge warn">1 failed</span>` : ""
+          }</div>${
+            showWarn ? `<div style="margin-top:6px"><div style="font-weight:600">${WARN.remoteError.name}</div><div class="muted">${WARN.remoteError.why}</div></div>` : ""
+          }</div>`;
+        const text = `<div class="section"><div class="section-title">Text content</div><div class="samples">${
+          S.textSamples.map((t) => `<div class="sample">“${t}”</div>`).join("")
+        }<div class="sample muted">+${S.textLayerCount - S.textSamples.length} more…</div></div></div>`;
+        return tiles + types + sets + remote + text;
+      }
+
+      function render() {
+        const v = cur();
+        let html = successHead() + warnBanners() + plainWrote();
+        if (v === "A") {
+          html += `<details class="more"><summary><span class="caret">▸</span> Details</summary><div style="margin-top:12px">${techDetail()}</div></details>`;
+        } else if (v === "B") {
+          html += `<div style="margin-top:4px">${techDetail()}</div>`;
+        } else if (v === "C") {
+          html += `<div style="margin-top:14px"><span class="link" onclick="return false">View export details</span></div>`;
+        }
+        document.getElementById("report").innerHTML = html;
+        document.getElementById("vlabel").textContent = `${v} — ${VARIANTS.find(([k]) => k === v)[1]}`;
+        document.getElementById("warnbtn").classList.toggle("armed", showWarn);
+      }
+      function cycle(d) {
+        const keys = VARIANTS.map(([k]) => k);
+        const i = keys.indexOf(cur());
+        const next = keys[(i + d + keys.length) % keys.length];
+        const u = new URL(location); u.searchParams.set("variant", next); history.replaceState(null, "", u);
+        render();
+      }
+      function toggleWarn() { showWarn = !showWarn; render(); }
+      function toggleTheme() {
+        document.body.classList.toggle("dark");
+        document.getElementById("themebtn").textContent = document.body.classList.contains("dark") ? "☀" : "☾";
+      }
+      document.addEventListener("keydown", (e) => {
+        const t = e.target; if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        if (e.key === "ArrowLeft") cycle(-1);
+        if (e.key === "ArrowRight") cycle(1);
+      });
+      render();
+    </script>
+  </body>
+</html>
