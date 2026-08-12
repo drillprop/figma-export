@@ -25,7 +25,8 @@
       body {
         font: 12px/1.45 -apple-system, Segoe UI, sans-serif;
         margin: 0;
-        padding: 16px;
+        /* Extra bottom padding gives the last element breathing room when the panel scrolls. */
+        padding: 16px 16px 20px;
         background: var(--bg);
         color: var(--text);
         overflow-y: auto;
@@ -350,15 +351,17 @@
       .samples { display: flex; flex-direction: column; gap: 2px; }
       .sample { color: var(--muted); font-style: italic; }
 
+      /* Status pills share the chips' vertical padding so tags line up at one height. */
       .badge {
         display: inline-block;
         border-radius: 999px;
-        padding: 1px 8px;
+        padding: 2px 8px;
         font-size: 11px;
         font-weight: 600;
       }
       .badge.ok { background: rgba(20, 174, 92, 0.16); color: var(--accent); }
-      .badge.warn { background: rgba(242, 72, 34, 0.14); color: var(--err); }
+      /* A failed linked-component is a soft warning (saved as reference) — amber, not red. */
+      .badge.warn { background: var(--warn-bg); color: var(--warn); }
 
       /* Warnings — one amber, expandable summary (distinct from red errors). */
       details.warnings {
