@@ -148,6 +148,7 @@ function renderReport(s: ExportSummary, path: string): void {
   }
 
   if (s.components.remote > 0) {
+    const wrap = el("div");
     const badges = el("div", { class: "chips" });
     badges.appendChild(el("span", { class: "badge ok", text: `${s.remoteMastersResolved} resolved` }));
     if (s.remoteMasterErrors.length) {
@@ -155,7 +156,25 @@ function renderReport(s: ExportSummary, path: string): void {
         el("span", { class: "badge warn", text: `${s.remoteMasterErrors.length} unresolved` }),
       );
     }
-    resultEl.appendChild(section("Remote library masters", badges));
+    wrap.appendChild(badges);
+
+    if (s.remoteMasterErrors.length) {
+      const list = el("div", { class: "unresolved-list" });
+      const shown = s.remoteMasterErrors.slice(0, 30);
+      for (const e of shown) {
+        list.appendChild(
+          el("div", { class: "error-item" }, [
+            el("span", { class: "error-name", text: e.name }),
+            el("span", { class: "error-msg", text: e.error }),
+          ]),
+        );
+      }
+      const extra = s.remoteMasterErrors.length - shown.length;
+      if (extra > 0) list.appendChild(el("div", { class: "error-msg", text: `+${extra} more…` }));
+      wrap.appendChild(list);
+    }
+
+    resultEl.appendChild(section("Remote library masters", wrap));
   }
 
   if (s.textSamples.length) {
