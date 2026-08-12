@@ -128,7 +128,40 @@
       /* 5 — Options toggle */
       .row { display: flex; align-items: center; gap: 8px; }
       .row label { font-weight: 400; }
-      .row input { margin: 0; }
+      /* Custom checkbox: the native control follows `color-scheme` and renders
+         as a black square under a dark OS/Figma theme, so we style our own. */
+      .row input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        margin: 0;
+        width: 16px;
+        height: 16px;
+        flex: none;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--bg);
+        cursor: pointer;
+        display: grid;
+        place-content: center;
+      }
+      .row input[type="checkbox"]::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        transform: scale(0);
+        transition: transform 0.08s ease-in-out;
+        background: var(--brand-text);
+        clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+      }
+      .row input[type="checkbox"]:checked {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .row input[type="checkbox"]:checked::before { transform: scale(1); }
+      .row input[type="checkbox"]:focus-visible {
+        outline: 2px solid var(--brand);
+        outline-offset: 1px;
+      }
 
       /* 6 — Connection, visually demoted */
       .block.quiet .block-title { color: var(--muted); }
