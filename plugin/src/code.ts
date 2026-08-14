@@ -537,7 +537,7 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
 /** A short, path-safe suffix derived from a node id, to disambiguate colliding
  * folder names (e.g. "123:456" -> "3456"). */
 function shortNodeId(id: string): string {
-  const cleaned = String(id).replace(/[^a-zA-Z0-9]/g, "");
+  const cleaned = id.replace(/[^a-zA-Z0-9]/g, "");
   return cleaned.slice(-4) || cleaned || "id";
 }
 
