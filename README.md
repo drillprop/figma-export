@@ -71,6 +71,14 @@ and pick `plugin/manifest.json`.
 The path you give is the exact base; want a `figma-export/` subfolder? Include
 it in the path. The server refuses to write if the folder doesn't exist.
 
+## Applying an export (agent skill)
+
+The exported JSON is meant to be fed to AI tooling. `skills/apply-figma-export/`
+is an installable agent skill that teaches an agent how to read a bundle
+(`node.json`, `components.json`, the preview) and rebuild the design as code in
+your own stack. Copy or symlink it into your project's skills directory (e.g.
+`.claude/skills/apply-figma-export`) and commit the export alongside your code.
+
 ## Development
 
 ```bash
