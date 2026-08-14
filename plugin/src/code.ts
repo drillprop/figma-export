@@ -456,6 +456,177 @@ interface ExportMessage {
   endpoint: string;
 }
 
+/** Everything one node's export produces, ready for the UI to POST. */
+interface NodeExport {
+  payload: ExportPayload;
+  svgBytes: Uint8Array | null;
+  pngBytes: Uint8Array | null;
+  icons: RawAsset[];
+}
+
+/** Serialize one node, gather its components, render its preview/icons, and
+ * build the payload. The reusable unit both the single-node and batch paths
+ * drive; throws on failure so the caller decides how to report it. */
+async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExport> {
+  figma.ui.postMessage({ type: "progress", message: `Serializing "${target.name}"…` });
+
+  const ctx: SerializeCtx = { count: 0, cap: MAX_NODES, truncated: false };
+  const node = await serialize(target, ctx);
+  console.log(`[figma-export] serialized ${ctx.count} nodes from "${target.name}"`);
+  if (ctx.truncated) {
+    console.warn(`[figma-export] truncated at ${MAX_NODES} nodes (selection too large)`);
+  }
+
+  const components = await collectComponents(target);
+  console.log(`[figma-export] collected ${components.length} components`);
+
+  let remoteMasters: SerializedNode[] = [];
+  if (msg.resolveRemote) {
+    remoteMasters = await resolveRemoteMasters(components, (message) =>
+      figma.ui.postMessage({ type: "progress", message }),
+    );
+  }
+
+  const format: PreviewFormat =
+    msg.preview === "PNG" || msg.preview === "SVG" ? msg.preview : "NONE";
+  let svgBytes: Uint8Array | null = null;
+  let pngBytes: Uint8Array | null = null;
+  let previewSkipped = false;
+
+  if (format !== "NONE" && "exportAsync" in target) {
+    if (format === "SVG" && ctx.count > MAX_SVG_NODES) {
+      previewSkipped = true;
+    } else {
+      try {
+        svgBytes = format === "SVG" ? await target.exportAsync({ format: "SVG" }) : null;
+        pngBytes = format === "PNG" ? await target.exportAsync(pngSettings(target)) : null;
+      } catch (err) {
+        console.warn(`[figma-export] ${format} preview failed:`, err);
+      }
+    }
+  }
+
+  let icons: RawAsset[] = [];
+  if (msg.library && "exportAsync" in target) {
+    figma.ui.postMessage({ type: "progress", message: "Extracting icons…" });
+    icons = await collectIcons(target);
+    console.log(`[figma-export] extracted ${icons.length} icon(s)`);
+  }
+
+  const summary = summarize(node, components, remoteMasters);
+  summary.truncated = ctx.truncated;
+  summary.truncatedAt = ctx.truncated ? MAX_NODES : null;
+  summary.preview = { format, skipped: previewSkipped, produced: Boolean(svgBytes || pngBytes) };
+
+  const payload: ExportPayload = {
+    outputDir: msg.outputDir,
+    fileKey: currentFileKey(),
+    fileName: figma.root.name,
+    nodeId: target.id,
+    nodeName: target.name,
+    exportedAt: new Date().toISOString(),
+    summary,
+    node,
+    components,
+    remoteMasters,
+  };
+
+  return { payload, svgBytes, pngBytes, icons };
+}
+
+/** Drop any selected node that lives inside another selected node — its content
+ * is already captured by the ancestor's export (de-nest). */
+function deNest(nodes: AnyNode[]): AnyNode[] {
+  const ids = new Set(nodes.map((n) => n.id));
+  return nodes.filter((node) => {
+    let parent = node.parent;
+    while (parent) {
+      if (ids.has(parent.id)) return false;
+      parent = parent.parent;
+    }
+    return true;
+  });
+}
+
+// Batch export serializes one node at a time and waits for the UI to POST it
+// before moving on (serialize → write → release → next). This resolver bridges
+// that wait: it's fulfilled when the UI acknowledges a written node.
+let resolveBatchAck: (() => void) | null = null;
+
+function waitForBatchAck(): Promise<void> {
+  return new Promise((resolve) => {
+    resolveBatchAck = resolve;
+  });
+}
+
+/** Run the export for the current selection: single node keeps today's report;
+ * 2+ nodes stream sequentially, best-effort, each to its own folder. */
+async function handleExport(msg: ExportMessage): Promise<void> {
+  await figma.clientStorage.setAsync(SETTINGS_KEY, {
+    outputDir: msg.outputDir,
+    endpoint: msg.endpoint,
+  } satisfies Settings);
+
+  const targets = deNest([...figma.currentPage.selection] as AnyNode[]);
+  if (targets.length === 0) {
+    figma.ui.postMessage({
+      type: "error",
+      message: "Nothing selected. Select a layer on the canvas, then Export.",
+    });
+    return;
+  }
+
+  if (targets.length === 1) {
+    const out = await exportNode(targets[0], msg);
+    figma.ui.postMessage({
+      type: "result",
+      payload: out.payload,
+      svgBytes: out.svgBytes,
+      pngBytes: out.pngBytes,
+      icons: out.icons,
+      library: msg.library,
+    });
+    return;
+  }
+
+  // 2+ nodes: serialize → hand to UI → wait for it to write → release → next.
+  // A single node failing never discards the rest (best-effort).
+  for (let i = 0; i < targets.length; i++) {
+    const target = targets[i];
+    figma.ui.postMessage({
+      type: "batch-progress",
+      index: i + 1,
+      total: targets.length,
+      name: target.name,
+    });
+    try {
+      const out = await exportNode(target, msg);
+      figma.ui.postMessage({
+        type: "batch-item",
+        index: i,
+        total: targets.length,
+        name: target.name,
+        payload: out.payload,
+        svgBytes: out.svgBytes,
+        pngBytes: out.pngBytes,
+        icons: out.icons,
+        library: msg.library,
+      });
+      await waitForBatchAck();
+    } catch (err) {
+      figma.ui.postMessage({
+        type: "batch-fail",
+        index: i,
+        name: target.name,
+        error: String((err as Error)?.message ?? err),
+      });
+    }
+  }
+  figma.ui.postMessage({ type: "batch-done" });
+}
+
+type UiToPlugin = ExportMessage | { type: "batch-ack" };
+
 figma.on("selectionchange", postSelection);
 
 (async () => {
@@ -464,90 +635,17 @@ figma.on("selectionchange", postSelection);
   postSelection();
 })();
 
-figma.ui.onmessage = async (msg: ExportMessage) => {
+figma.ui.onmessage = async (msg: UiToPlugin) => {
+  if (msg.type === "batch-ack") {
+    const resolve = resolveBatchAck;
+    resolveBatchAck = null;
+    resolve?.();
+    return;
+  }
   if (msg.type !== "export") return;
 
   try {
-    await figma.clientStorage.setAsync(SETTINGS_KEY, {
-      outputDir: msg.outputDir,
-      endpoint: msg.endpoint,
-    } satisfies Settings);
-
-    const target = figma.currentPage.selection[0] as AnyNode | undefined;
-    if (!target) {
-      figma.ui.postMessage({
-        type: "error",
-        message: "Nothing selected. Select a layer on the canvas, then Export.",
-      });
-      return;
-    }
-
-    figma.ui.postMessage({ type: "progress", message: `Serializing "${target.name}"…` });
-
-    const ctx: SerializeCtx = { count: 0, cap: MAX_NODES, truncated: false };
-    const node = await serialize(target, ctx);
-    console.log(`[figma-export] serialized ${ctx.count} nodes from "${target.name}"`);
-    if (ctx.truncated) {
-      console.warn(`[figma-export] truncated at ${MAX_NODES} nodes (selection too large)`);
-    }
-
-    const components = await collectComponents(target);
-    console.log(`[figma-export] collected ${components.length} components`);
-
-    let remoteMasters: SerializedNode[] = [];
-    if (msg.resolveRemote) {
-      remoteMasters = await resolveRemoteMasters(components, (message) =>
-        figma.ui.postMessage({ type: "progress", message }),
-      );
-    }
-
-    const format: PreviewFormat =
-      msg.preview === "PNG" || msg.preview === "SVG" ? msg.preview : "NONE";
-    let svgBytes: Uint8Array | null = null;
-    let pngBytes: Uint8Array | null = null;
-    let previewSkipped = false;
-
-    if (format !== "NONE" && "exportAsync" in target) {
-      if (format === "SVG" && ctx.count > MAX_SVG_NODES) {
-        previewSkipped = true;
-      } else {
-        try {
-          svgBytes =
-            format === "SVG" ? await target.exportAsync({ format: "SVG" }) : null;
-          pngBytes =
-            format === "PNG" ? await target.exportAsync(pngSettings(target)) : null;
-        } catch (err) {
-          console.warn(`[figma-export] ${format} preview failed:`, err);
-        }
-      }
-    }
-
-    let icons: RawAsset[] = [];
-    if (msg.library && "exportAsync" in target) {
-      figma.ui.postMessage({ type: "progress", message: "Extracting icons…" });
-      icons = await collectIcons(target);
-      console.log(`[figma-export] extracted ${icons.length} icon(s)`);
-    }
-
-    const summary = summarize(node, components, remoteMasters);
-    summary.truncated = ctx.truncated;
-    summary.truncatedAt = ctx.truncated ? MAX_NODES : null;
-    summary.preview = { format, skipped: previewSkipped, produced: Boolean(svgBytes || pngBytes) };
-
-    const payload: ExportPayload = {
-      outputDir: msg.outputDir,
-      fileKey: currentFileKey(),
-      fileName: figma.root.name,
-      nodeId: target.id,
-      nodeName: target.name,
-      exportedAt: new Date().toISOString(),
-      summary,
-      node,
-      components,
-      remoteMasters,
-    };
-
-    figma.ui.postMessage({ type: "result", payload, svgBytes, pngBytes, icons, library: msg.library });
+    await handleExport(msg);
   } catch (err) {
     figma.ui.postMessage({ type: "error", message: String((err as Error)?.message ?? err) });
   }
