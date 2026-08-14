@@ -529,6 +529,7 @@ function renderReport(s: ExportSummary, ctx: ReportContext): void {
 // --- selection + export -------------------------------------------------
 function renderSelection(): void {
   const first = selection[0];
+  const multi = selection.length > 1;
   const selName = byId<HTMLDivElement>("selName");
   const selMeta = byId<HTMLDivElement>("selMeta");
   const selThumb = byId<HTMLDivElement>("selThumb");
@@ -536,7 +537,7 @@ function renderSelection(): void {
     selName.textContent = "Nothing selected";
     selMeta.textContent = "Select a layer on the canvas.";
     selThumb.textContent = "–";
-  } else if (selection.length > 1) {
+  } else if (multi) {
     selName.textContent = `${selection.length} layers`;
     selMeta.textContent = "Each is exported to its own folder.";
     selThumb.textContent = String(selection.length);
@@ -547,11 +548,9 @@ function renderSelection(): void {
   }
   if (busy) return;
   btn.disabled = !first;
-  btn.textContent = !first
-    ? "Select something to export"
-    : selection.length > 1
-      ? `Export ${selection.length} layers`
-      : `Export “${first.name}”`;
+  if (!first) btn.textContent = "Select something to export";
+  else if (multi) btn.textContent = `Export ${selection.length} layers`;
+  else btn.textContent = `Export “${first.name}”`;
 }
 
 /** Derive the server base (e.g. http://localhost:3579) from the endpoint field. */
