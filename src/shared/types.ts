@@ -62,6 +62,10 @@ export interface ExportPayload {
   fileName: string;
   nodeId: string;
   nodeName: string;
+  /** On-disk folder name override. When set (batch collision disambiguation),
+   * the export writes here instead of the slugged `nodeName`; the real
+   * `nodeName` is still what's stored in the metadata. */
+  folderName?: string;
   exportedAt: string;
   summary: ExportSummary;
   node: SerializedNode;

@@ -152,7 +152,7 @@ app.post("/sync", async (c) => {
   }
 
   const fileDir = slug(payload.fileKey, "unknown-file");
-  const nodeDir = slug(payload.nodeName || payload.nodeId, "node");
+  const nodeDir = slug(payload.folderName || payload.nodeName || payload.nodeId, "node");
   const outDir = path.join(baseDir, fileDir, nodeDir);
 
   try {

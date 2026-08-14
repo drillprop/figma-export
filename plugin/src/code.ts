@@ -534,6 +534,34 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
   return { payload, svgBytes, pngBytes, icons };
 }
 
+/** A short, path-safe suffix derived from a node id, to disambiguate colliding
+ * folder names (e.g. "123:456" -> "3456"). */
+function shortNodeId(id: string): string {
+  const cleaned = String(id).replace(/[^a-zA-Z0-9]/g, "");
+  return cleaned.slice(-4) || cleaned || "id";
+}
+
+/** Assign a collision-free on-disk folder name to each batch node. The first
+ * node with a given (slugged) name keeps the bare name; each later same-named
+ * node gets a short node-id suffix. Returns node.id -> folder name only for the
+ * disambiguated ones, so unique names fall through to the server's default. */
+function batchFolderNames(targets: AnyNode[]): Map<string, string> {
+  const taken = new Set<string>();
+  const overrides = new Map<string, string>();
+  for (const node of targets) {
+    const base = slugName(node.name, "node");
+    if (!taken.has(base)) {
+      taken.add(base);
+      continue; // bare name is free — server derives it from nodeName
+    }
+    let candidate = `${base}-${shortNodeId(node.id)}`;
+    for (let n = 2; taken.has(candidate); n++) candidate = `${base}-${shortNodeId(node.id)}-${n}`;
+    taken.add(candidate);
+    overrides.set(node.id, candidate);
+  }
+  return overrides;
+}
+
 /** Drop any selected node that lives inside another selected node — its content
  * is already captured by the ancestor's export (de-nest). */
 function deNest(nodes: AnyNode[]): AnyNode[] {
@@ -590,7 +618,9 @@ async function handleExport(msg: ExportMessage): Promise<void> {
   }
 
   // 2+ nodes: serialize → hand to UI → wait for it to write → release → next.
-  // A single node failing never discards the rest (best-effort).
+  // A single node failing never discards the rest (best-effort). Same-named
+  // nodes get collision-free folder names so they don't overwrite each other.
+  const folderNames = batchFolderNames(targets);
   for (let i = 0; i < targets.length; i++) {
     const target = targets[i];
     figma.ui.postMessage({
@@ -600,6 +630,8 @@ async function handleExport(msg: ExportMessage): Promise<void> {
     });
     try {
       const out = await exportNode(target, msg);
+      const folderName = folderNames.get(target.id);
+      if (folderName) out.payload.folderName = folderName;
       figma.ui.postMessage({
         type: "batch-item",
         name: target.name,
