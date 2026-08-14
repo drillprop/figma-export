@@ -546,11 +546,28 @@ function renderSelection(): void {
     selMeta.textContent = typeLabel(first.type);
     selThumb.textContent = (first.name.trim()[0] ?? "?").toUpperCase();
   }
+  renderSelList(multi ? selection : []);
   if (busy) return;
   btn.disabled = !first;
   if (!first) btn.textContent = "Select something to export";
   else if (multi) btn.textContent = `Export ${selection.length} layers`;
   else btn.textContent = `Export “${first.name}”`;
+}
+
+/** Peek-list of the individual layers in a multi-selection, so you can scan
+ * exactly what's about to be exported. Empty list hides it (single/none). */
+function renderSelList(nodes: SelectionNode[]): void {
+  const list = byId<HTMLDivElement>("selList");
+  list.textContent = "";
+  list.hidden = nodes.length === 0;
+  for (const node of nodes) {
+    list.appendChild(
+      el("div", { class: "sel-row" }, [
+        el("span", { class: "sel-row-name", text: node.name }),
+        el("span", { class: "sel-row-type", text: typeLabel(node.type) }),
+      ]),
+    );
+  }
 }
 
 /** Derive the server base (e.g. http://localhost:3579) from the endpoint field. */
