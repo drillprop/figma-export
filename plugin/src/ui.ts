@@ -31,7 +31,32 @@ type FromPlugin =
       pngBytes: Uint8Array | null;
       icons: { name: string; bytes: Uint8Array }[];
       library: boolean;
-    };
+    }
+  | { type: "batch-progress"; index: number; total: number }
+  | {
+      type: "batch-item";
+      name: string;
+      payload: ExportPayload;
+      svgBytes: Uint8Array | null;
+      pngBytes: Uint8Array | null;
+      icons: { name: string; bytes: Uint8Array }[];
+      library: boolean;
+    }
+  | { type: "batch-fail"; name: string; error: string }
+  | { type: "batch-done" };
+
+/** One node's outcome within a batch run, accumulated for the end summary. */
+interface BatchResult {
+  name: string;
+  ok: boolean;
+  error?: string;
+  /** On-disk node folder (successful items only) — its parent is the batch's
+   * `<fileKey>/` dir that the single Open-folder button points at. */
+  path?: string;
+  /** One-line-stat inputs pulled from the node's summary. */
+  layers?: number;
+  components?: number;
+}
 
 const byId = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -55,6 +80,8 @@ const outputSegs = Array.from(
 
 let selection: SelectionNode[] = [];
 let busy = false;
+// Accumulated per-node outcomes for an in-flight batch (2+ nodes).
+let batchResults: BatchResult[] = [];
 // Preview: Vector (SVG) | Image (PNG), with Skip (NONE) as a quiet secondary.
 let previewFormat: PreviewFormat = "SVG";
 // Output: a folder of assets (library on) vs a single self-contained SVG file.
@@ -502,6 +529,7 @@ function renderReport(s: ExportSummary, ctx: ReportContext): void {
 // --- selection + export -------------------------------------------------
 function renderSelection(): void {
   const first = selection[0];
+  const multi = selection.length > 1;
   const selName = byId<HTMLDivElement>("selName");
   const selMeta = byId<HTMLDivElement>("selMeta");
   const selThumb = byId<HTMLDivElement>("selThumb");
@@ -509,16 +537,37 @@ function renderSelection(): void {
     selName.textContent = "Nothing selected";
     selMeta.textContent = "Select a layer on the canvas.";
     selThumb.textContent = "–";
+  } else if (multi) {
+    selName.textContent = `${selection.length} layers`;
+    selMeta.textContent = "Each is exported to its own folder.";
+    selThumb.textContent = String(selection.length);
   } else {
-    const extra = selection.length - 1;
     selName.textContent = first.name;
-    selMeta.textContent =
-      typeLabel(first.type) + (extra > 0 ? ` · +${extra} more (first is exported)` : "");
+    selMeta.textContent = typeLabel(first.type);
     selThumb.textContent = (first.name.trim()[0] ?? "?").toUpperCase();
   }
+  renderSelList(multi ? selection : []);
   if (busy) return;
   btn.disabled = !first;
-  btn.textContent = first ? `Export “${first.name}”` : "Select something to export";
+  if (!first) btn.textContent = "Select something to export";
+  else if (multi) btn.textContent = `Export ${selection.length} layers`;
+  else btn.textContent = `Export “${first.name}”`;
+}
+
+/** Peek-list of the individual layers in a multi-selection, so you can scan
+ * exactly what's about to be exported. Empty list hides it (single/none). */
+function renderSelList(nodes: SelectionNode[]): void {
+  const list = byId<HTMLDivElement>("selList");
+  list.textContent = "";
+  list.hidden = nodes.length === 0;
+  for (const node of nodes) {
+    list.appendChild(
+      el("div", { class: "sel-row" }, [
+        el("span", { class: "sel-row-name", text: node.name }),
+        el("span", { class: "sel-row-type", text: typeLabel(node.type) }),
+      ]),
+    );
+  }
 }
 
 /** Derive the server base (e.g. http://localhost:3579) from the endpoint field. */
@@ -594,6 +643,138 @@ function startExport(): void {
 }
 btn.onclick = startExport;
 
+/** The outcome of encoding one node's previews and POSTing it to the server. */
+interface PostResult {
+  ok: boolean;
+  body: SyncResponse;
+  iconCount: number;
+  imageCount: number;
+  /** The server couldn't be reached at all (network failure). */
+  unreachable?: boolean;
+  /** The server rejected the destination output folder. */
+  folderError?: boolean;
+}
+
+/** Encode a node's SVG/PNG/icon bytes into the payload and POST it to the
+ * server. Shared by the single-node and batch paths so they stay in step. */
+async function postPayload(
+  payload: ExportPayload,
+  svgBytes: Uint8Array | null,
+  pngBytes: Uint8Array | null,
+  icons: { name: string; bytes: Uint8Array }[],
+  library: boolean,
+): Promise<PostResult> {
+  const assets: AssetFile[] = [];
+
+  if (svgBytes) {
+    const raw = new TextDecoder().decode(svgBytes);
+    // With the library on, pull raster images out to files (small SVG + a
+    // preview.html wrapper on the server side); otherwise keep it self-contained.
+    if (library) {
+      const { svg, assets: images } = externalizeSvgImages(raw);
+      payload.svg = svg;
+      assets.push(...images);
+    } else {
+      payload.svg = raw;
+    }
+  }
+  if (pngBytes) payload.png = bytesToBase64(pngBytes);
+
+  // Vector icons from the node-walk share the same preview.assets/ folder.
+  for (const icon of icons ?? []) {
+    assets.push({ name: icon.name, base64: bytesToBase64(icon.bytes) });
+  }
+  if (assets.length) payload.assets = assets;
+
+  const iconCount = assets.filter((a) => a.name.endsWith(".svg")).length;
+  const imageCount = assets.length - iconCount;
+
+  try {
+    const res = await fetch(endpointEl.value.trim(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setConnection("ok");
+    const body = (await res.json().catch(() => ({}))) as SyncResponse;
+    return {
+      ok: res.ok,
+      body,
+      iconCount,
+      imageCount,
+      folderError: !res.ok && /output folder/i.test(body.error ?? ""),
+    };
+  } catch {
+    setConnection("down");
+    return { ok: false, body: {}, iconCount, imageCount, unreachable: true };
+  }
+}
+
+/** One-line failure reason for a batch row. */
+function batchError(result: PostResult): string {
+  if (result.unreachable) return "server unreachable";
+  return result.body.error || "export failed";
+}
+
+/** One-line "142 layers · 8 components" stat for a successful batch row. */
+function batchStat(r: BatchResult): string {
+  const layers = r.layers ?? 0;
+  const parts = [`${layers} layer${layers === 1 ? "" : "s"}`];
+  if (r.components && r.components > 0) {
+    parts.push(`${r.components} component${r.components === 1 ? "" : "s"}`);
+  }
+  return parts.join(" · ");
+}
+
+/** Strip the trailing `/node-name` segment to get the parent `<fileKey>/` dir
+ * that every node folder in the batch was written under. */
+function parentDir(nodePath: string): string {
+  return nodePath.replace(/[\\/][^\\/]+[\\/]?$/, "") || nodePath;
+}
+
+/** Compact end-of-run summary for a batch: one row per node (name · ✓/✗ ·
+ * stat or failure reason), a single Open-folder to the parent dir, and
+ * Export another. */
+function renderBatchSummary(results: BatchResult[]): void {
+  resultEl.textContent = "";
+  const ok = results.filter((r) => r.ok).length;
+  const failed = results.length - ok;
+
+  resultEl.appendChild(
+    el("div", { class: "r-head" }, [
+      el("span", { class: "r-tick", text: failed === 0 ? "✓" : "⚠" }),
+      el("span", { text: `Exported ${ok} of ${results.length}` }),
+    ]),
+  );
+
+  const list = el("div", { class: "batch-list" });
+  for (const r of results) {
+    const row = el("div", { class: "batch-row" + (r.ok ? "" : " fail") }, [
+      el("span", { class: "batch-mark " + (r.ok ? "ok" : "fail"), text: r.ok ? "✓" : "✗" }),
+      el("span", { class: "batch-name", text: r.name }),
+      el("span", { class: "batch-stat", text: r.ok ? batchStat(r) : r.error || "export failed" }),
+    ]);
+    list.appendChild(row);
+  }
+  resultEl.appendChild(list);
+
+  // One Open-folder → the shared parent dir where all node folders live.
+  const written = results.find((r) => r.ok && r.path)?.path;
+  const actions = el("div", { class: "actions" });
+  if (written) {
+    const dir = parentDir(written);
+    const openBtn = el("button", { class: "mini", text: "Open folder" }) as HTMLButtonElement;
+    openBtn.onclick = () => void openPath(dir, openBtn);
+    actions.appendChild(openBtn);
+  }
+  const anotherBtn = el("button", { class: "mini", text: "Export another" }) as HTMLButtonElement;
+  anotherBtn.onclick = resetToReady;
+  actions.appendChild(anotherBtn);
+  resultEl.appendChild(actions);
+
+  resultEl.className = "show";
+}
+
 window.onmessage = async (event: MessageEvent) => {
   const msg = event.data.pluginMessage as FromPlugin | undefined;
   if (!msg) return;
@@ -618,62 +799,60 @@ window.onmessage = async (event: MessageEvent) => {
     showExportFailed();
     return;
   }
+  if (msg.type === "batch-progress") {
+    // A fresh batch starts at node 1 — reset the accumulator.
+    if (msg.index === 1) batchResults = [];
+    setStatus(`Exporting ${msg.index} of ${msg.total}…`, "progress");
+    return;
+  }
+  if (msg.type === "batch-item") {
+    const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons, msg.library);
+    const summary = msg.payload.summary;
+    batchResults.push({
+      name: msg.name,
+      ok: result.ok,
+      error: result.ok ? undefined : batchError(result),
+      path: result.ok ? result.body.path : undefined,
+      layers: summary.totalNodes,
+      components: summary.components.total,
+    });
+    // Tell the plugin this node is written so it can release it and serialize
+    // the next — always, even on failure, or the batch loop would stall.
+    parent.postMessage({ pluginMessage: { type: "batch-ack" } }, "*");
+    return;
+  }
+  if (msg.type === "batch-fail") {
+    // Serialization itself failed — no POST happened.
+    batchResults.push({ name: msg.name, ok: false, error: msg.error });
+    return;
+  }
+  if (msg.type === "batch-done") {
+    endExporting();
+    setStatus("");
+    renderBatchSummary(batchResults);
+    return;
+  }
   if (msg.type !== "result") return;
 
-  const payload = msg.payload;
-  const assets: AssetFile[] = [];
-
-  if (msg.svgBytes) {
-    const raw = new TextDecoder().decode(msg.svgBytes);
-    // With the library on, pull raster images out to files (small SVG + a
-    // preview.html wrapper on the server side); otherwise keep it self-contained.
-    if (msg.library) {
-      const { svg, assets: images } = externalizeSvgImages(raw);
-      payload.svg = svg;
-      assets.push(...images);
-    } else {
-      payload.svg = raw;
-    }
-  }
-  if (msg.pngBytes) payload.png = bytesToBase64(msg.pngBytes);
-
-  // Vector icons from the node-walk share the same preview.assets/ folder.
-  for (const icon of msg.icons ?? []) {
-    assets.push({ name: icon.name, base64: bytesToBase64(icon.bytes) });
-  }
-  if (assets.length) payload.assets = assets;
-
-  const iconCount = assets.filter((a) => a.name.endsWith(".svg")).length;
-  const imageCount = assets.length - iconCount;
-
-  try {
-    const res = await fetch(endpointEl.value.trim(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+  const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons, msg.library);
+  endExporting();
+  if (result.ok) {
+    clearErrors();
+    setStatus("");
+    renderReport(msg.payload.summary, {
+      path: result.body.path || "written",
+      previewPath: result.body.preview,
+      outputMode,
+      iconCount: result.iconCount,
+      imageCount: result.imageCount,
     });
-    setConnection("ok");
-    const body = (await res.json().catch(() => ({}))) as SyncResponse;
-    endExporting();
-    if (res.ok) {
-      clearErrors();
-      setStatus("");
-      renderReport(payload.summary, {
-        path: body.path || "written",
-        previewPath: body.preview,
-        outputMode,
-        iconCount,
-        imageCount,
-      });
-    } else if (/output folder/i.test(body.error ?? "")) {
-      // The server reached us but rejected the destination folder.
-      showFolderNotFound();
-    } else {
-      showExportFailed();
-    }
-  } catch {
+  } else if (result.unreachable) {
     // Network-level failure: the server couldn't be reached at all.
-    endExporting();
     showServerUnreachable();
+  } else if (result.folderError) {
+    // The server reached us but rejected the destination folder.
+    showFolderNotFound();
+  } else {
+    showExportFailed();
   }
 };

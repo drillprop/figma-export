@@ -81,6 +81,26 @@
       #selName { font-weight: 600; word-break: break-word; }
       #selMeta { color: var(--muted); font-size: 11px; }
 
+      /* Peek-list of the individual layers in a multi-selection. */
+      .sel-list {
+        margin-top: 8px;
+        max-height: 132px;
+        overflow-y: auto;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--card);
+      }
+      .sel-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 6px 10px;
+      }
+      .sel-row + .sel-row { border-top: 1px solid var(--border); }
+      .sel-row-name { min-width: 0; word-break: break-word; }
+      .sel-row-type { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
+
       /* 2 — Where it goes */
       .field-row { display: flex; gap: 6px; align-items: stretch; }
       .field-row input { flex: 1; }
@@ -324,6 +344,24 @@
       .wrote-plain { margin-top: 12px; }
       .wrote-plain b { font-weight: 600; }
 
+      /* Batch result — one compact row per exported node. */
+      .batch-list { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+      .batch-row {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--card);
+      }
+      .batch-mark { flex: 0 0 auto; font-weight: 700; }
+      .batch-mark.ok { color: var(--accent); }
+      .batch-mark.fail { color: var(--err); }
+      .batch-name { font-weight: 600; word-break: break-word; min-width: 0; }
+      .batch-stat { margin-left: auto; color: var(--muted); font-size: 11px; text-align: right; }
+      .batch-row.fail .batch-stat { color: var(--err); }
+
       /* Details disclosure — technical stats, collapsed by default. */
       details.more {
         margin-top: 14px;
@@ -436,6 +474,7 @@
           <div id="selMeta">Select a layer on the canvas.</div>
         </div>
       </div>
+      <div id="selList" class="sel-list" hidden></div>
     </section>
 
     <!-- Input controls — dimmed together while an export is in flight. -->
