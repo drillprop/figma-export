@@ -1,6 +1,6 @@
 ---
 name: apply-figma-export
-description: Rebuild a Figma design in code from a committed figma-export bundle. Use when the repo has a figma-export folder (node.json + components.json + meta.json + a preview) and the user asks to implement, build, or code up that design — "implement this Figma export", "turn this export into components", "build this design".
+description: Rebuild a Figma design in code from a figma-export bundle. Use when there's a figma-export folder on disk (node.json + components.json + meta.json + a preview) and the user asks to implement, build, or code up that design — "implement this Figma export", "turn this export into components", "build this design".
 ---
 
 # Apply a Figma Export
@@ -97,4 +97,4 @@ Most projects already have an icon library (`lucide-react`, `@heroicons`, a loca
 
 ## Related: Figma's own MCP server
 
-Figma ships a [Dev Mode MCP server](https://developers.figma.com/docs/figma-mcp-server/tools-and-prompts/) that pulls design context *live* from a selected node (`get_design_context`, `get_variable_defs`, Code Connect, etc.). It's the right tool when Figma is open and reachable — but it needs a Figma session, a Dev/Full seat, and network. This skill is for the opposite case: a bundle **committed to the repo**, so an agent can rebuild the design offline, in CI, or on the free plan, with no Figma access. They don't compete — reach for the MCP when working against a live file, for these files when working against the snapshot.
+Figma ships a [Dev Mode MCP server](https://developers.figma.com/docs/figma-mcp-server/tools-and-prompts/) that pulls design context *live* from a selected node (`get_design_context`, `get_variable_defs`, Code Connect, etc.). It's the right tool when Figma is open and reachable — but it needs a Figma session, a Dev/Full seat, and network. This skill is for the opposite case: a bundle **saved in the repo**, so an agent can rebuild the design offline, in CI, or on the free plan, with no Figma access. They don't compete — reach for the MCP when working against a live file, for these files when working against the snapshot.
