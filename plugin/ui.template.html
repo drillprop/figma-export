@@ -324,6 +324,24 @@
       .wrote-plain { margin-top: 12px; }
       .wrote-plain b { font-weight: 600; }
 
+      /* Batch result — one compact row per exported node. */
+      .batch-list { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+      .batch-row {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--card);
+      }
+      .batch-mark { flex: 0 0 auto; font-weight: 700; }
+      .batch-mark.ok { color: var(--accent); }
+      .batch-mark.fail { color: var(--err); }
+      .batch-name { font-weight: 600; word-break: break-word; min-width: 0; }
+      .batch-stat { margin-left: auto; color: var(--muted); font-size: 11px; text-align: right; }
+      .batch-row.fail .batch-stat { color: var(--err); }
+
       /* Details disclosure — technical stats, collapsed by default. */
       details.more {
         margin-top: 14px;

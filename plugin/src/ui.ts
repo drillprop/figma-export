@@ -50,6 +50,12 @@ interface BatchResult {
   name: string;
   ok: boolean;
   error?: string;
+  /** On-disk node folder (successful items only) — its parent is the batch's
+   * `<fileKey>/` dir that the single Open-folder button points at. */
+  path?: string;
+  /** One-line-stat inputs pulled from the node's summary. */
+  layers?: number;
+  components?: number;
 }
 
 const byId = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -530,16 +536,22 @@ function renderSelection(): void {
     selName.textContent = "Nothing selected";
     selMeta.textContent = "Select a layer on the canvas.";
     selThumb.textContent = "–";
+  } else if (selection.length > 1) {
+    selName.textContent = `${selection.length} layers`;
+    selMeta.textContent = "Each is exported to its own folder.";
+    selThumb.textContent = String(selection.length);
   } else {
-    const extra = selection.length - 1;
     selName.textContent = first.name;
-    selMeta.textContent =
-      typeLabel(first.type) + (extra > 0 ? ` · +${extra} more (first is exported)` : "");
+    selMeta.textContent = typeLabel(first.type);
     selThumb.textContent = (first.name.trim()[0] ?? "?").toUpperCase();
   }
   if (busy) return;
   btn.disabled = !first;
-  btn.textContent = first ? `Export “${first.name}”` : "Select something to export";
+  btn.textContent = !first
+    ? "Select something to export"
+    : selection.length > 1
+      ? `Export ${selection.length} layers`
+      : `Export “${first.name}”`;
 }
 
 /** Derive the server base (e.g. http://localhost:3579) from the endpoint field. */
@@ -688,7 +700,25 @@ function batchError(result: PostResult): string {
   return result.body.error || "export failed";
 }
 
-/** Minimal end-of-run summary for a batch: how many nodes saved vs failed. */
+/** One-line "142 layers · 8 components" stat for a successful batch row. */
+function batchStat(r: BatchResult): string {
+  const layers = r.layers ?? 0;
+  const parts = [`${layers} layer${layers === 1 ? "" : "s"}`];
+  if (r.components && r.components > 0) {
+    parts.push(`${r.components} component${r.components === 1 ? "" : "s"}`);
+  }
+  return parts.join(" · ");
+}
+
+/** Strip the trailing `/node-name` segment to get the parent `<fileKey>/` dir
+ * that every node folder in the batch was written under. */
+function parentDir(nodePath: string): string {
+  return nodePath.replace(/[\\/][^\\/]+[\\/]?$/, "") || nodePath;
+}
+
+/** Compact end-of-run summary for a batch: one row per node (name · ✓/✗ ·
+ * stat or failure reason), a single Open-folder to the parent dir, and
+ * Export another. */
 function renderBatchSummary(results: BatchResult[]): void {
   resultEl.textContent = "";
   const ok = results.filter((r) => r.ok).length;
@@ -700,14 +730,27 @@ function renderBatchSummary(results: BatchResult[]): void {
       el("span", { text: `Exported ${ok} of ${results.length}` }),
     ]),
   );
-  resultEl.appendChild(
-    el("div", {
-      class: "wrote-plain",
-      text: failed === 0 ? `All ${results.length} selections saved.` : `${ok} saved, ${failed} failed.`,
-    }),
-  );
 
+  const list = el("div", { class: "batch-list" });
+  for (const r of results) {
+    const row = el("div", { class: "batch-row" + (r.ok ? "" : " fail") }, [
+      el("span", { class: "batch-mark " + (r.ok ? "ok" : "fail"), text: r.ok ? "✓" : "✗" }),
+      el("span", { class: "batch-name", text: r.name }),
+      el("span", { class: "batch-stat", text: r.ok ? batchStat(r) : r.error || "export failed" }),
+    ]);
+    list.appendChild(row);
+  }
+  resultEl.appendChild(list);
+
+  // One Open-folder → the shared parent dir where all node folders live.
+  const written = results.find((r) => r.ok && r.path)?.path;
   const actions = el("div", { class: "actions" });
+  if (written) {
+    const dir = parentDir(written);
+    const openBtn = el("button", { class: "mini", text: "Open folder" }) as HTMLButtonElement;
+    openBtn.onclick = () => void openPath(dir, openBtn);
+    actions.appendChild(openBtn);
+  }
   const anotherBtn = el("button", { class: "mini", text: "Export another" }) as HTMLButtonElement;
   anotherBtn.onclick = resetToReady;
   actions.appendChild(anotherBtn);
@@ -748,10 +791,14 @@ window.onmessage = async (event: MessageEvent) => {
   }
   if (msg.type === "batch-item") {
     const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons, msg.library);
+    const summary = msg.payload.summary;
     batchResults.push({
       name: msg.name,
       ok: result.ok,
       error: result.ok ? undefined : batchError(result),
+      path: result.ok ? result.body.path : undefined,
+      layers: summary.totalNodes,
+      components: summary.components.total,
     });
     // Tell the plugin this node is written so it can release it and serialize
     // the next — always, even on failure, or the batch loop would stall.
