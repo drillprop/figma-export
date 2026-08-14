@@ -597,14 +597,11 @@ async function handleExport(msg: ExportMessage): Promise<void> {
       type: "batch-progress",
       index: i + 1,
       total: targets.length,
-      name: target.name,
     });
     try {
       const out = await exportNode(target, msg);
       figma.ui.postMessage({
         type: "batch-item",
-        index: i,
-        total: targets.length,
         name: target.name,
         payload: out.payload,
         svgBytes: out.svgBytes,
@@ -616,7 +613,6 @@ async function handleExport(msg: ExportMessage): Promise<void> {
     } catch (err) {
       figma.ui.postMessage({
         type: "batch-fail",
-        index: i,
         name: target.name,
         error: String((err as Error)?.message ?? err),
       });

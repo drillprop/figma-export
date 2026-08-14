@@ -32,11 +32,9 @@ type FromPlugin =
       icons: { name: string; bytes: Uint8Array }[];
       library: boolean;
     }
-  | { type: "batch-progress"; index: number; total: number; name: string }
+  | { type: "batch-progress"; index: number; total: number }
   | {
       type: "batch-item";
-      index: number;
-      total: number;
       name: string;
       payload: ExportPayload;
       svgBytes: Uint8Array | null;
@@ -44,7 +42,7 @@ type FromPlugin =
       icons: { name: string; bytes: Uint8Array }[];
       library: boolean;
     }
-  | { type: "batch-fail"; index: number; name: string; error: string }
+  | { type: "batch-fail"; name: string; error: string }
   | { type: "batch-done" };
 
 /** One node's outcome within a batch run, accumulated for the end summary. */
