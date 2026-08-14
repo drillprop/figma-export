@@ -32,7 +32,7 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 | `FRAME`, `COMPONENT`, `INSTANCE`, `GROUP` | A container (`div` / your component). See auto-layout below. |
 | `TEXT` | Text; `characters` is the content. |
 | `RECTANGLE`, `ELLIPSE`, `LINE` | A styled box (background, border, radius). |
-| `VECTOR`, `BOOLEAN_OPERATION` | An icon — pull the matching SVG from `preview.assets/` instead of rebuilding paths. |
+| `VECTOR`, `BOOLEAN_OPERATION` | An icon — see [Icons](#icons). Prefer a matching icon from the project's icon library; fall back to the SVG in `preview.assets/`. |
 
 ### Auto-layout → flexbox
 
@@ -71,6 +71,12 @@ An `INSTANCE` node points at a component via `mainComponentName`/`mainComponentK
 - Variant axes → props/variants (e.g. a `variant`/`size` prop, or a design-system component's existing props).
 - Repeated instances of the same master → **reuse** one component, don't inline each copy.
 
+### Icons
+
+Icons are `VECTOR`/`BOOLEAN_OPERATION` nodes or `INSTANCE`s of an icon component — the node's `name` is the icon name (`home-line`, `chevron-down`). The export always extracts the SVG to `preview.assets/`, but that's the **fallback, not the default**.
+
+Most projects already have an icon library (`lucide-react`, `@heroicons`, a local `Icon` component or `icons/` folder). **Prefer a matching library icon** — it keeps the project's sizing, `currentColor`, and theming. Match by name, allowing for naming differences (`home-line` → `HomeIcon`/`house`), and confirm the glyph against `preview.html`. Only use the `preview.assets/` SVG when there's no match (a custom or branded glyph).
+
 ### Design tokens
 
 `boundVariables` on a node means that value is bound to a Figma **variable** (a design token), not a raw literal. When present, prefer the project's matching token (Tailwind class, CSS var, theme value) over the hard-coded number/color.
@@ -79,9 +85,9 @@ An `INSTANCE` node points at a component via `mainComponentName`/`mainComponentK
 
 1. **Locate the bundle.** Find the `node.json` the user means (they may point at a folder). Read `meta.json` for scale and `truncated`.
 2. **See the target.** Open `preview.html` (or `preview.png`) so you're matching a real design, not guessing from JSON.
-3. **Learn the house style.** Before writing anything, check how *this* project builds UI — component library, styling approach (Tailwind / CSS modules / styled), token/theme source, folder conventions. Match it; the export is data, not a style mandate.
+3. **Learn the house style.** Before writing anything, check how *this* project builds UI — component library, **icon library/set** (see [Icons](#icons)), styling approach (Tailwind / CSS modules / styled), token/theme source, folder conventions. Match it; the export is data, not a style mandate.
 4. **Map components first.** For each distinct master in `components.json`, decide: does an existing project component cover it, or do you build one? Turn variant axes into props.
-5. **Build outermost-in.** Translate the root container (auto-layout → flex), then children, reusing icons/images from `preview.assets/` rather than reconstructing vectors.
+5. **Build outermost-in.** Translate the root container (auto-layout → flex), then children. For icons, prefer a matching library icon and fall back to `preview.assets/` ([Icons](#icons)); reuse extracted images from `preview.assets/` rather than reconstructing vectors.
 6. **Verify against the preview.** Compare your result to `preview.html`: spacing, alignment, radius, colors. Convert 0–1 colors and px correctly. Substitute tokens where `boundVariables` appears.
 
 ## Related: Figma's own MCP server
