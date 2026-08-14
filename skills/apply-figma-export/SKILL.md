@@ -1,6 +1,6 @@
 ---
 name: apply-figma-export
-description: Turn a figma-export bundle into code. Use when a folder holds figma-export output (node.json + components.json + meta.json + a preview) and the user wants that Figma node rebuilt as components, markup, or styles in their own stack.
+description: Rebuild a Figma design in code from a committed figma-export bundle. Use when the repo has a figma-export folder (node.json + components.json + meta.json + a preview) and the user asks to implement, build, or code up that design — "implement this Figma export", "turn this export into components", "build this design".
 ---
 
 # Apply a Figma Export
@@ -23,29 +23,34 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 
 **Read order:** open `preview.html` to see the goal → skim `meta.json` for scale → walk `node.json` for structure. Check `meta.json.truncated`: if `true`, the tree was capped (huge selection) and is incomplete.
 
+**Multiple nodes:** one `<fileKey>/` dir can hold several sibling folders — a batch export writes one bundle per selected node. Each is independent; treat them one at a time — but if they're the same screen at different breakpoints (mobile / desktop / full HD — the node names usually say so, e.g. `Home/mobile`, `Home/desktop`), build one responsive component from them rather than separate ones. A folder name may carry a `-<id>` suffix to avoid collisions with a same-named sibling, so trust `meta.json`'s `nodeName` for the real name, not the folder.
+
 ## How Figma nodes map to code
 
 `node.json` is a tree of nodes. Every node has `id`, `name`, `type`, geometry, and style; containers have `children`. Use the node **`name`** for component/class names — designers name layers meaningfully. Map by `type`:
 
 | `type` | Becomes |
 | --- | --- |
-| `FRAME`, `COMPONENT`, `INSTANCE`, `GROUP` | A container (`div` / your component). See auto-layout below. |
+| `FRAME`, `COMPONENT`, `INSTANCE`, `GROUP` | A container (`div` / your component). See [Layout](#layout). |
 | `TEXT` | Text; `characters` is the content. |
 | `RECTANGLE`, `ELLIPSE`, `LINE` | A styled box (background, border, radius). |
 | `VECTOR`, `BOOLEAN_OPERATION` | An icon — see [Icons](#icons). Prefer a matching icon from the project's icon library; fall back to the SVG in `preview.assets/`. |
 
-### Auto-layout → flexbox
+### Layout
 
-When a container has `layoutMode` set to `HORIZONTAL` or `VERTICAL`, it's flex. `NONE`/absent means children are absolutely positioned (`x`/`y` within the parent).
+Auto-layout is Figma's flexbox: `layoutMode: HORIZONTAL | VERTICAL` → `display: flex`. `GRID` is Figma's grid auto-layout → `display: grid` (but the export only carries the *mode*, not its column/row counts or gaps — read `preview.html` to reconstruct the grid). `NONE`/absent means Figma isn't driving layout; children carry raw `x`/`y`.
 
 | Figma field | CSS |
 | --- | --- |
 | `layoutMode: HORIZONTAL \| VERTICAL` | `display: flex` + `flex-direction: row \| column` |
+| `layoutMode: GRID` | `display: grid` (columns/rows inferred from the preview) |
 | `primaryAxisAlignItems` (`MIN`/`CENTER`/`MAX`/`SPACE_BETWEEN`) | `justify-content` (`flex-start`/`center`/`flex-end`/`space-between`) |
 | `counterAxisAlignItems` (`MIN`/`CENTER`/`MAX`/`BASELINE`) | `align-items` |
 | `itemSpacing` | `gap` (px) |
 | `paddingTop/Right/Bottom/Left` | `padding` (px) |
 | `layoutWrap: WRAP` | `flex-wrap: wrap` |
+
+**Pick the layout the design wants, not the one Figma happened to use.** Match the CSS to the visual arrangement in `preview.html`: a 1-D row or stack is flex; a repeating 2-D arrangement (card gallery, equal columns, a matrix) is `grid` — even if the designer built it with nested auto-layout or absolute positioning. And `layoutMode: NONE` doesn't mean "use `position: absolute`" — Figma leaves plenty of simple frames unset. Reserve absolute positioning for genuine overlaps (a badge on an avatar, an overlay); otherwise rebuild the arrangement as flex or grid so it stays responsive. Note: the designer's Figma layout grids (column guides) aren't exported — infer columns from the preview and spacing.
 
 ### Style fields
 
@@ -79,21 +84,17 @@ Most projects already have an icon library (`lucide-react`, `@heroicons`, a loca
 
 ### Design tokens
 
-`boundVariables` on a node means that value is bound to a Figma **variable** (a design token), not a raw literal. When present, prefer the project's matching token (Tailwind class, CSS var, theme value) over the hard-coded number/color.
+`boundVariables` on a node means that value is bound to a Figma **variable** (a design token), not a raw literal. When present, prefer the project's matching token (CSS var, theme value, or whatever the project uses) over the hard-coded number/color.
 
 ## Workflow
 
 1. **Locate the bundle.** Find the `node.json` the user means (they may point at a folder). Read `meta.json` for scale and `truncated`.
 2. **See the target.** Open `preview.html` (or `preview.png`) so you're matching a real design, not guessing from JSON.
-3. **Learn the house style.** Before writing anything, check how *this* project builds UI — component library, **icon library/set** (see [Icons](#icons)), styling approach (Tailwind / CSS modules / styled), token/theme source, folder conventions. Match it; the export is data, not a style mandate.
+3. **Learn the house style.** Before writing anything, check how *this* project builds UI — component library, **icon library/set** (see [Icons](#icons)), styling approach, token/theme source, folder conventions. Match whatever the project already uses; the export is data, not a style mandate.
 4. **Map components first.** For each distinct master in `components.json`, decide: does an existing project component cover it, or do you build one? Turn variant axes into props.
-5. **Build outermost-in.** Translate the root container (auto-layout → flex), then children. For icons, prefer a matching library icon and fall back to `preview.assets/` ([Icons](#icons)); reuse extracted images from `preview.assets/` rather than reconstructing vectors.
+5. **Build outermost-in.** Translate the root container (auto-layout → flex/grid, [Layout](#layout)), then children. For icons, prefer a matching library icon and fall back to `preview.assets/` ([Icons](#icons)); reuse extracted images from `preview.assets/` rather than reconstructing vectors.
 6. **Verify against the preview.** Compare your result to `preview.html`: spacing, alignment, radius, colors. Convert 0–1 colors and px correctly. Substitute tokens where `boundVariables` appears.
 
 ## Related: Figma's own MCP server
 
 Figma ships a [Dev Mode MCP server](https://developers.figma.com/docs/figma-mcp-server/tools-and-prompts/) that pulls design context *live* from a selected node (`get_design_context`, `get_variable_defs`, Code Connect, etc.). It's the right tool when Figma is open and reachable — but it needs a Figma session, a Dev/Full seat, and network. This skill is for the opposite case: a bundle **committed to the repo**, so an agent can rebuild the design offline, in CI, or on the free plan, with no Figma access. They don't compete — reach for the MCP when working against a live file, for these files when working against the snapshot.
-
-## Install
-
-Copy or symlink this folder into a project's skills directory (e.g. `.claude/skills/apply-figma-export`), then commit the Figma export bundle alongside the code. The agent picks it up whenever it sees an export folder.
