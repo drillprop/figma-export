@@ -202,7 +202,7 @@ app.post("/sync", async (c) => {
     await Promise.all([
       writeFile(path.join(outDir, "node.json"), JSON.stringify(payload.node, null, 2)),
       writeFile(
-        path.join(outDir, "components.json"),
+        path.join(outDir, "figma-components.json"),
         JSON.stringify(payload.components ?? [], null, 2),
       ),
       writeFile(path.join(outDir, "meta.json"), JSON.stringify(meta, null, 2)),

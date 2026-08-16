@@ -50,7 +50,7 @@ and pick `plugin/manifest.json`.
    ```
    <output folder>/<fileKey>/<node-name>/
      node.json           full serialized subtree
-     components.json     unique components used (+ variant values, remote masters)
+     figma-components.json  unique components used (+ variant values, remote masters)
      meta.json           ids, timestamp, and the summary
      remote-masters.json resolved library-component definitions (if any)
      preview.svg          vector reference
@@ -76,7 +76,7 @@ it in the path. The server refuses to write if the folder doesn't exist.
 
 The exported JSON is meant to be fed to AI tooling. `skills/apply-figma-export/`
 is an installable agent skill that teaches an agent how to read a bundle
-(`node.json`, `components.json`, the preview) and rebuild the design as code in
+(`node.json`, `figma-components.json`, the preview) and rebuild the design as code in
 your own stack. Copy or symlink it into your project's skills directory (e.g.
 `.claude/skills/apply-figma-export`) and commit the export alongside your code.
 
