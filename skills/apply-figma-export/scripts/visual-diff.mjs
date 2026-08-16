@@ -11,7 +11,8 @@
 // Supports 8-bit non-interlaced PNG, color types 0/2/4/6 (gray, RGB, gray+A, RGBA).
 import { readFileSync, writeFileSync } from "node:fs";
 import { inflateSync, deflateSync } from "node:zlib";
-import pixelmatch from "pixelmatch";
+import { loadDep } from "./ensure-deps.mjs";
+const pixelmatch = (await loadDep("pixelmatch")).default;
 
 const SIG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 

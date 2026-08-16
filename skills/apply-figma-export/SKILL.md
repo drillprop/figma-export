@@ -103,7 +103,7 @@ Confirm your rebuild against the export — you have vision, use it. Render your
 
 Run all four steps in order, every time — each writes an artifact the next one loads.
 
-**0. Install deps** in the target project (skip either already present): `npm i -D playwright pixelmatch`. Playwright uses system Chrome, no browser download; `make-compare` needs neither.
+**0. Deps: nothing to install** — just run the steps below. Each script auto-installs its one dep on first use (`box-diff` → `playwright`, `visual-diff` → `pixelmatch`, `make-compare` → none) into `~/.cache/figma-export-visual-check`, leaving the project untouched. To disable auto-install, set `FIGMA_EXPORT_NO_INSTALL=1` and pre-install with `npm i -D playwright pixelmatch`.
 
 **1. Capture PNGs** at the design's frame width (`node.json` root `absoluteBoundingBox.width`, e.g. 1440): `build.png` (build full-page) and `design.png` (rasterize `preview.html`). `visual-diff` needs **identical width and height** — pad both to the taller with white: `magick in.png -background white -gravity North -extent <w>x<H> out.png`.
 

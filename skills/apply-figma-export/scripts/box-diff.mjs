@@ -3,8 +3,8 @@
 // Design truth = absoluteBoundingBox in node.json. Render truth = getBoundingClientRect (Playwright).
 // Immune to fonts / anti-aliasing / image content — answers "is each box in the right place & size?".
 //
-// Requires Playwright:  npm i -D playwright   (uses your system Chrome via channel:"chrome",
-// so no browser download is needed). Usage:
+// Playwright is auto-installed on first run (see ensure-deps.mjs); it uses your system Chrome
+// via channel:"chrome", so no browser download is needed. Usage:
 //   node box-diff.mjs <build-url|file.html> <node.json> [--width 1440] [--tol 4] [--out pairs.json]
 //
 // Addresses the known matching gaps:
@@ -15,7 +15,8 @@
 // Most reliable pairing: have the build emit  data-fig-id="<figma node id>"  on elements; this script
 // pairs those exactly and only falls back to text/geometry for the rest.
 import { readFileSync, writeFileSync } from "node:fs";
-import { chromium } from "playwright";
+import { loadDep } from "./ensure-deps.mjs";
+const { chromium } = await loadDep("playwright");
 
 const args = process.argv.slice(2);
 const [buildTarget, nodeFile] = args.filter((a) => !a.startsWith("--"));
