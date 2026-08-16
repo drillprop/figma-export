@@ -43,8 +43,13 @@ if (selector) shot = page.locator(selector).first();
 else if (!clip && mode === "design") shot = page.locator("svg").first();
 
 if (shot) await shot.screenshot({ path: out });
-else if (clip) await page.screenshot({ path: out, clip: { x: clip[0], y: clip[1], width: clip[2], height: clip[3] } });
-else await page.screenshot({ path: out, fullPage: true });
+else if (clip) {
+  // Playwright's clip is bounded by the viewport, so a region below the initial 1024px
+  // height silently fails. Grow the viewport to cover the clip before shooting.
+  await page.setViewportSize({ width, height: Math.max(1024, clip[1] + clip[3]) });
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: out, clip: { x: clip[0], y: clip[1], width: clip[2], height: clip[3] } });
+} else await page.screenshot({ path: out, fullPage: true });
 
 const box = shot ? await shot.boundingBox() : null;
 await browser.close();
