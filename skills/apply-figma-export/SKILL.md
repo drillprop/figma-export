@@ -51,7 +51,7 @@ Confirm your rebuild against the export — you have vision, use it. **`box-diff
 
 1. **`capture`** — `node scripts/capture.mjs build <build-url>` + `node scripts/capture.mjs design <bundle>/preview.html` → `build.png` + `design.png`. Scrollbar hidden, so no 15px column shift.
 2. **`box-diff`** — `node scripts/box-diff.mjs <build-url> <bundle>/node.json` → Δx/Δy/Δw/Δh + `pairs.json`. Layout only; emit `data-fig-id="<node id>"` on build elements for exact pairing. Big `Δw` on text is **expected** (Figma text is fixed-width, HTML shrink-wraps) — match a line-break with `max-width` only when it matters visually.
-3. **`visual-diff`** — `node scripts/visual-diff.mjs build.png design.png diff.png`. Read the map, not the %. Add `--strip out.png` to also write **one Read-able `build │ design │ diff` PNG** (labelled) — the artifact *you* look at with vision (`--stack` for a column). Prefer this over building a montage by hand.
+3. **`visual-diff`** — `node scripts/visual-diff.mjs build.png design.png diff.png`. Read the map, not the %. Add `--strip out.png` to also write **one Read-able `build │ design │ diff` PNG** — each panel headed by a colour bar (blue/amber/red, that fixed order), the artifact *you* look at with vision (`--stack` for a column). Prefer this over building a montage by hand.
 4. **`make-compare`** — `node scripts/make-compare.mjs build.png design.png` → `compare.html`, the artifact a *human* opens.
 
 **Judging a region** (type, a button, one section): capture the same region on each side — build by `--selector "<css>" --scale 2`, design by `--clip x y w h` (the node's box from `node.json`) — then `visual-diff a.png b.png d.png --strip s.png` and Read the strip. One flow, no hand-cropping needed.
