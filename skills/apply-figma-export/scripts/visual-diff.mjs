@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { inflateSync, deflateSync } from "node:zlib";
 import { loadDep } from "./ensure-deps.mjs";
-const pixelmatch = (await loadDep("pixelmatch")).default;
+const pixelmatch = await loadDep("pixelmatch"); // loadDep unwraps CJS .default
 
 const SIG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 

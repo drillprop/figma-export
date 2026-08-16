@@ -23,10 +23,13 @@ const CACHE =
 const require = createRequire(import.meta.url);
 
 // Resolve `pkg` to a file path, optionally only searching `paths`, then load it
-// via dynamic import so both ESM-only and CommonJS packages work.
+// via dynamic import so both ESM-only and CommonJS packages work. Dynamic-importing
+// a CJS file puts its module.exports on `.default` (named exports are best-effort),
+// so unwrap `.default` to hand back the package's real export object/function.
 async function importFrom(pkg, paths) {
   const resolved = require.resolve(pkg, paths ? { paths } : undefined);
-  return import(pathToFileURL(resolved).href);
+  const m = await import(pathToFileURL(resolved).href);
+  return m.default ?? m;
 }
 
 export async function loadDep(pkg) {

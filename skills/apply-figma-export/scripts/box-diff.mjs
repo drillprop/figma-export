@@ -16,7 +16,7 @@
 // pairs those exactly and only falls back to text/geometry for the rest.
 import { readFileSync, writeFileSync } from "node:fs";
 import { loadDep } from "./ensure-deps.mjs";
-const { chromium } = await loadDep("playwright");
+const { chromium } = await loadDep("playwright"); // loadDep unwraps CJS .default
 
 const args = process.argv.slice(2);
 const [buildTarget, nodeFile] = args.filter((a) => !a.startsWith("--"));
