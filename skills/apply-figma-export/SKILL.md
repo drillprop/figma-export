@@ -90,10 +90,43 @@ Most projects already have an icon library (`lucide-react`, `@heroicons`, a loca
 
 1. **Locate the bundle.** Find the `node.json` the user means (they may point at a folder). Read `meta.json` for scale and `truncated`.
 2. **See the target.** Open `preview.html` (or `preview.png`) so you're matching a real design, not guessing from JSON.
-3. **Learn the house style.** Before writing anything, check how *this* project builds UI — component library, **icon library/set** (see [Icons](#icons)), styling approach, token/theme source, folder conventions. Match whatever the project already uses; the export is data, not a style mandate.
+3. **Learn the house style.** Before writing anything, check how *this* project builds UI — component library, **icon library/set** (see [Icons](#icons)), styling approach, token/theme source, folder conventions. Search the whole workspace, not just the current app — a shared `ui`/design-system package or sibling monorepo package often owns the real components. Match whatever the project already uses; the export is data, not a style mandate.
 4. **Map components first.** For each distinct master in `components.json`, decide: does an existing project component cover it, or do you build one? Turn variant axes into props.
 5. **Build outermost-in.** Translate the root container (auto-layout → flex/grid, [Layout](#layout)), then children. For icons, prefer a matching library icon and fall back to `preview.assets/` ([Icons](#icons)); reuse extracted images from `preview.assets/` rather than reconstructing vectors.
-6. **Verify against the preview.** Compare your result to `preview.html`: spacing, alignment, radius, colors. Convert 0–1 colors and px correctly. Substitute tokens where `boundVariables` appears.
+6. **Verify against the preview.** Compare your result to `preview.html`: spacing, alignment, radius, colors. Convert 0–1 colors and px correctly. Substitute tokens where `boundVariables` appears. Then run a [Visual check](#visual-check).
+
+## Visual check
+
+Confirm your rebuild against the export — you have vision, use it. Render your build and the design to PNGs of the **same width**, then compare.
+
+**Render the design from `preview.svg`, not `preview.html`.** `preview.html` wraps the SVG in `padding` + centering + `max-width` scaling, so it renders offset and shrunk — diffing against it is meaningless. Use the raw `preview.svg` (or a `preview.png`) for the true canvas.
+
+### Getting the two PNGs
+
+`box-diff` needs no screenshot — hand it the build's dev-server URL or built HTML and it renders internally. Only `visual-diff` / `compare` need captured PNGs, both at the design's frame width (`node.json`'s root `absoluteBoundingBox.width`, e.g. 1440):
+
+- **Build →** screenshot your running build full-page: headless Chrome (`--headless=new --screenshot=build.png --window-size=<w>,<tall>` on the dev-server URL, then trim), or Playwright `page.screenshot({ fullPage: true })`.
+- **Design →** rasterize `preview.svg` at the same width: headless Chrome (`--window-size=<w>,<svgHeight>`, the SVG carries its own `width`/`height`) or `magick preview.svg design.png`.
+
+`visual-diff` requires **identical width _and_ height** — full-page heights rarely match, so pad both to the taller with white before diffing: `magick in.png -background white -gravity North -extent <w>x<H> out.png`.
+
+Three bundled tools, by the question you're asking:
+
+| Tool | Answers | Notes |
+| --- | --- | --- |
+| `scripts/make-compare.mjs <build.png> <design.png>` | *Does it look right?* (human review) | Writes a self-contained `compare.html` — **slider / onion-skin / blink**, plus a **Box-diff** overlay that's **on by default**: it auto-loads `./pairs.json` from box-diff (override with `--boxes <path>`, skip with `--no-boxes`). Node built-ins. |
+| `scripts/box-diff.mjs <build.html> <bundle>/node.json` | *Is everything in the right place & size?* (layout) | **Playwright** (`npm i -D playwright`). Pairs rendered elements to Figma nodes; prints Δx/Δy/Δw/Δh, writes `pairs.json`. Immune to fonts/color. **Layout only.** |
+| `scripts/visual-diff.mjs <build.png> <design.png> diff.png` | *Which pixels differ?* (appearance) | **pixelmatch** (`npm i -D pixelmatch`). Same-size PNGs; red = differ. Ignores anti-aliasing, but genuinely different fonts/icons still inflate the %, so **read the map, not the number**. |
+
+**Expected to differ, don't chase:** project font vs Figma font, library icon vs exported glyph, token color vs raw hex. The rebuild wears the house style ([step 3](#workflow)) — those aren't bugs. Use **box-diff** for placement, **visual-diff/compare** for appearance, and your own eyes on `compare.html` to judge what actually matters.
+
+For sharper box-diff pairing, have the build emit `data-fig-id="<node id>"` on elements — the script pairs those exactly, falling back to text/geometry otherwise.
+
+### Fix loop
+
+**Layout is yours to close.** box-diff prints text: each Δ past tolerance is a placement bug you own — edit, re-run, repeat until the only Δs left are expected differences ([above](#visual-check)).
+
+**Appearance is not.** visual-diff/compare can't tell a real colour bug from the house style, so don't chase their %. Render `compare.html` and let a human make the final call.
 
 ## Related: Figma's own MCP server
 
