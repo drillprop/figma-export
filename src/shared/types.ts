@@ -37,8 +37,6 @@ export interface SerializedNode {
   [key: string]: unknown;
 }
 
-export type PreviewFormat = "SVG" | "PNG" | "NONE";
-
 export interface ExportSummary {
   target: { id: string; name: string; type: string };
   totalNodes: number;
@@ -51,7 +49,10 @@ export interface ExportSummary {
   remoteMasterErrors: { name: string; error: string }[];
   truncated: boolean;
   truncatedAt: number | null;
-  preview: { format: PreviewFormat; skipped: boolean; produced: boolean };
+  /** Every export now writes preview.svg + preview.png + preview.html. `svg`/`png`
+   * record which raster/vector previews were produced; `svgSkipped` flags a tree
+   * too large for an SVG preview (PNG + HTML still written). */
+  preview: { svg: boolean; png: boolean; svgSkipped: boolean };
 }
 
 /** The full body POSTed to the server's /sync endpoint. */

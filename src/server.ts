@@ -27,9 +27,10 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Wrap an SVG (with external image refs) inline in HTML so it renders from a
- * plain file:// — inline `<svg>` isn't in the browser's SVG secure-static-mode,
- * unlike an SVG loaded as `<img>` or opened directly, so its external images load. */
+/** Wrap the SVG inline in HTML so it renders from a plain file:// — inline `<svg>`
+ * isn't in the browser's SVG secure-static-mode, unlike an SVG loaded as `<img>`
+ * or opened directly, so any external image refs still load. No page padding; the
+ * SVG is simply centered in the viewport. */
 function previewHtml(title: string, svg: string): string {
   return `<!doctype html>
 <html>
@@ -37,8 +38,9 @@ function previewHtml(title: string, svg: string): string {
     <meta charset="utf-8" />
     <title>${escapeHtml(title)} — preview</title>
     <style>
-      body { margin: 0; background: #f5f5f5; display: flex; justify-content: center; padding: 24px; }
-      svg { max-width: 100%; height: auto; background: #fff; box-shadow: 0 1px 10px rgba(0, 0, 0, 0.15); }
+      html, body { margin: 0; min-height: 100%; }
+      body { display: flex; align-items: center; justify-content: center; }
+      svg { display: block; }
     </style>
   </head>
   <body>
@@ -160,10 +162,9 @@ app.post("/sync", async (c) => {
 
     const assets = payload.assets ?? [];
     const assetSvgCount = assets.filter((a) => a.name.endsWith(".svg")).length;
-    // The SVG references extracted images only when they were externalized, in
-    // which case it needs the HTML wrapper to render them from file://.
-    const needsPreviewHtml =
-      typeof payload.svg === "string" && payload.svg.includes("preview.assets/");
+    // Every export with an SVG gets an HTML wrapper: it inlines the SVG so any
+    // externalized images render from file://, and centers it with no padding.
+    const hasSvg = typeof payload.svg === "string";
 
     const meta = {
       fileKey: payload.fileKey ?? null,
@@ -178,31 +179,24 @@ app.post("/sync", async (c) => {
       assetCount: assets.length,
       assetImageCount: assets.length - assetSvgCount,
       assetSvgCount,
-      hasPreviewHtml: needsPreviewHtml,
+      hasPreviewHtml: hasSvg,
       summary: payload.summary ?? null,
     };
 
     const hasRemoteMasters = (payload.remoteMasters?.length ?? 0) > 0;
 
     // preview.assets/: raster images pulled out of the SVG + vector icon SVGs.
-    // Plus a preview.html that inlines the (external-ref) SVG so images render.
     if (assets.length > 0) {
       const assetsDir = path.join(outDir, "preview.assets");
       await mkdir(assetsDir, { recursive: true });
-      await Promise.all([
-        ...assets.map((asset) =>
+      await Promise.all(
+        assets.map((asset) =>
           writeFile(
             path.join(assetsDir, slug(asset.name, "asset")),
             Buffer.from(asset.base64, "base64"),
           ),
         ),
-        needsPreviewHtml
-          ? writeFile(
-              path.join(outDir, "preview.html"),
-              previewHtml(payload.nodeName || payload.nodeId || "preview", payload.svg as string),
-            )
-          : Promise.resolve(),
-      ]);
+      );
     }
 
     await Promise.all([
@@ -218,19 +212,26 @@ app.post("/sync", async (c) => {
             JSON.stringify(payload.remoteMasters, null, 2),
           )
         : Promise.resolve(),
-      typeof payload.svg === "string"
-        ? writeFile(path.join(outDir, "preview.svg"), payload.svg)
+      hasSvg
+        ? writeFile(path.join(outDir, "preview.svg"), payload.svg as string)
+        : Promise.resolve(),
+      // preview.html always accompanies the SVG: it inlines it so external image
+      // refs render, and centers it with no padding.
+      hasSvg
+        ? writeFile(
+            path.join(outDir, "preview.html"),
+            previewHtml(payload.nodeName || payload.nodeId || "preview", payload.svg as string),
+          )
         : Promise.resolve(),
       typeof payload.png === "string"
         ? writeFile(path.join(outDir, "preview.png"), Buffer.from(payload.png, "base64"))
         : Promise.resolve(),
     ]);
 
-    // Point "Open preview" at the richest preview written: the HTML wrapper if
-    // one was needed, else the raw SVG/PNG, else nothing.
+    // Point "Open preview" at the richest preview written: the HTML wrapper when
+    // an SVG exists, else the raw PNG, else nothing.
     let previewFile: string | null = null;
-    if (needsPreviewHtml) previewFile = "preview.html";
-    else if (typeof payload.svg === "string") previewFile = "preview.svg";
+    if (hasSvg) previewFile = "preview.html";
     else if (typeof payload.png === "string") previewFile = "preview.png";
 
     console.log(`wrote ${payload.nodeName || payload.nodeId} → ${outDir}`);

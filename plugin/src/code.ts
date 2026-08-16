@@ -1,12 +1,11 @@
 // Figma plugin main thread. Serializes the selected node's subtree, gathers the
-// components it uses (resolving remote/library masters by key), renders an
-// optional SVG/PNG preview, and hands a typed payload to the UI, which POSTs it
+// components it uses (resolving remote/library masters by key), renders the
+// SVG + PNG previews, and hands a typed payload to the UI, which POSTs it
 // to the local figma-export server. Runs in the Figma sandbox (no `fetch`).
 import type {
   ComponentEntry,
   ExportPayload,
   ExportSummary,
-  PreviewFormat,
   SerializedNode,
   VariantAxes,
   VariantValues,
@@ -421,7 +420,7 @@ function summarize(
       .map((c) => ({ name: c.name, error: c.masterError as string })),
     truncated: false,
     truncatedAt: null,
-    preview: { format: "NONE", skipped: false, produced: false },
+    preview: { svg: false, png: false, svgSkipped: false },
   };
 }
 
@@ -449,9 +448,7 @@ async function loadSettings(): Promise<Settings> {
 
 interface ExportMessage {
   type: "export";
-  preview: PreviewFormat;
   resolveRemote: boolean;
-  library: boolean;
   outputDir: string;
   endpoint: string;
 }
@@ -487,27 +484,32 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
     );
   }
 
-  const format: PreviewFormat =
-    msg.preview === "PNG" || msg.preview === "SVG" ? msg.preview : "NONE";
+  // Every export renders both previews (SVG + PNG); the server also derives an
+  // HTML wrapper from the SVG. The SVG is skipped only for trees too large to
+  // render — the PNG still stands in.
   let svgBytes: Uint8Array | null = null;
   let pngBytes: Uint8Array | null = null;
-  let previewSkipped = false;
+  let svgSkipped = false;
 
-  if (format !== "NONE" && "exportAsync" in target) {
-    if (format === "SVG" && ctx.count > MAX_SVG_NODES) {
-      previewSkipped = true;
+  if ("exportAsync" in target) {
+    if (ctx.count > MAX_SVG_NODES) {
+      svgSkipped = true;
     } else {
       try {
-        svgBytes = format === "SVG" ? await target.exportAsync({ format: "SVG" }) : null;
-        pngBytes = format === "PNG" ? await target.exportAsync(pngSettings(target)) : null;
+        svgBytes = await target.exportAsync({ format: "SVG" });
       } catch (err) {
-        console.warn(`[figma-export] ${format} preview failed:`, err);
+        console.warn("[figma-export] SVG preview failed:", err);
       }
+    }
+    try {
+      pngBytes = await target.exportAsync(pngSettings(target));
+    } catch (err) {
+      console.warn("[figma-export] PNG preview failed:", err);
     }
   }
 
   let icons: RawAsset[] = [];
-  if (msg.library && "exportAsync" in target) {
+  if ("exportAsync" in target) {
     figma.ui.postMessage({ type: "progress", message: "Extracting icons…" });
     icons = await collectIcons(target);
     console.log(`[figma-export] extracted ${icons.length} icon(s)`);
@@ -516,7 +518,7 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
   const summary = summarize(node, components, remoteMasters);
   summary.truncated = ctx.truncated;
   summary.truncatedAt = ctx.truncated ? MAX_NODES : null;
-  summary.preview = { format, skipped: previewSkipped, produced: Boolean(svgBytes || pngBytes) };
+  summary.preview = { svg: Boolean(svgBytes), png: Boolean(pngBytes), svgSkipped };
 
   const payload: ExportPayload = {
     outputDir: msg.outputDir,
@@ -612,7 +614,6 @@ async function handleExport(msg: ExportMessage): Promise<void> {
       svgBytes: out.svgBytes,
       pngBytes: out.pngBytes,
       icons: out.icons,
-      library: msg.library,
     });
     return;
   }
@@ -639,7 +640,6 @@ async function handleExport(msg: ExportMessage): Promise<void> {
         svgBytes: out.svgBytes,
         pngBytes: out.pngBytes,
         icons: out.icons,
-        library: msg.library,
       });
       await waitForBatchAck();
     } catch (err) {
