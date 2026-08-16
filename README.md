@@ -53,20 +53,21 @@ and pick `plugin/manifest.json`.
      components.json     unique components used (+ variant values, remote masters)
      meta.json           ids, timestamp, and the summary
      remote-masters.json resolved library-component definitions (if any)
-     preview.svg | .png   visual reference
-     preview.html         open this to view an externalized SVG (see below)
+     preview.svg          vector reference
+     preview.png          raster reference
+     preview.html         open this to view the SVG (centered, no padding)
      preview.assets/      images pulled out of the SVG (see below)
    ```
 
-   **SVG preview & images.** With **Extract SVG images to files** on (default),
-   the raster fills are written under `preview.assets/` and referenced from the
-   SVG (`href="preview.assets/img-0.png"`) — no base64, so the committed `.svg`
-   stays small and diff-friendly. Because a browser blocks external images when
-   an SVG is opened as a plain `file://` or `<img>` ("secure static mode"), the
-   server also writes **`preview.html`** with the SVG inlined — open that to see
-   the images render. Uncheck the option for a single self-contained SVG with
-   inline base64 that previews anywhere. Pure-vector nodes produce no assets
-   either way.
+   **Previews.** Every export always writes all three previews — `preview.svg`,
+   `preview.png`, and `preview.html` — no format choice. The raster fills are
+   pulled out under `preview.assets/` and referenced from the SVG
+   (`href="preview.assets/img-0.png"`) — no base64, so the committed `.svg` stays
+   small and diff-friendly. Because a browser blocks external images when an SVG
+   is opened as a plain `file://` or `<img>` ("secure static mode"),
+   **`preview.html`** inlines the SVG (centered, with no page padding) so those
+   images render — open that for the truest view. Pure-vector nodes produce no
+   assets.
 
 The path you give is the exact base; want a `figma-export/` subfolder? Include
 it in the path. The server refuses to write if the folder doesn't exist.
@@ -96,10 +97,9 @@ their payload contract from `src/shared/types.ts`, so the two cannot drift.
 - **Current file only.** It exports the selection in the open file; it can't
   read a file you haven't opened (that would need the rate-limited REST API).
 - **Large selections** can crash the Figma tab (out of memory). Guards:
-  serialization is capped at 40k nodes (marks the export truncated), SVG preview
-  is skipped above ~6k nodes — switch **Preview image** to **PNG** for
-  vector-heavy nodes — and node counts are logged to the plugin dev console
-  (**Plugins → Development → Open console**).
+  serialization is capped at 40k nodes (marks the export truncated), the SVG
+  preview is skipped above ~6k nodes (the PNG still stands in), and node counts
+  are logged to the plugin dev console (**Plugins → Development → Open console**).
 - **Remote/library components** used in the file export fully; with *Resolve
   remote library masters* on, their master definitions are imported by key
   (needs the library published + enabled in the file).

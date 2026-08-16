@@ -8,7 +8,6 @@ import type {
   ExportSummary,
   OpenResponse,
   PickFolderResponse,
-  PreviewFormat,
   SyncResponse,
 } from "../../src/shared/types";
 
@@ -30,7 +29,6 @@ type FromPlugin =
       svgBytes: Uint8Array | null;
       pngBytes: Uint8Array | null;
       icons: { name: string; bytes: Uint8Array }[];
-      library: boolean;
     }
   | { type: "batch-progress"; index: number; total: number }
   | {
@@ -40,7 +38,6 @@ type FromPlugin =
       svgBytes: Uint8Array | null;
       pngBytes: Uint8Array | null;
       icons: { name: string; bytes: Uint8Array }[];
-      library: boolean;
     }
   | { type: "batch-fail"; name: string; error: string }
   | { type: "batch-done" };
@@ -69,23 +66,12 @@ const btn = byId<HTMLButtonElement>("export");
 const outputDirEl = byId<HTMLInputElement>("outputDir");
 const browseEl = byId<HTMLButtonElement>("browse");
 const endpointEl = byId<HTMLInputElement>("endpoint");
-const skipPreviewEl = byId<HTMLButtonElement>("skipPreview");
 const resolveRemoteEl = byId<HTMLInputElement>("resolveRemote");
-const previewSegs = Array.from(
-  document.querySelectorAll<HTMLButtonElement>(".seg[data-preview]"),
-);
-const outputSegs = Array.from(
-  document.querySelectorAll<HTMLButtonElement>(".seg[data-output]"),
-);
 
 let selection: SelectionNode[] = [];
 let busy = false;
 // Accumulated per-node outcomes for an in-flight batch (2+ nodes).
 let batchResults: BatchResult[] = [];
-// Preview: Vector (SVG) | Image (PNG), with Skip (NONE) as a quiet secondary.
-let previewFormat: PreviewFormat = "SVG";
-// Output: a folder of assets (library on) vs a single self-contained SVG file.
-let outputMode: "folder" | "single" = "folder";
 
 function setStatus(text: string, cls: "" | "err" | "progress" = ""): void {
   statusEl.textContent = text;
@@ -180,43 +166,6 @@ function showExportFailed(): void {
   );
 }
 
-// --- segmented controls -------------------------------------------------
-function renderPreviewChoice(): void {
-  for (const seg of previewSegs) {
-    seg.setAttribute("aria-pressed", String(seg.dataset.preview === previewFormat));
-  }
-  const skipped = previewFormat === "NONE";
-  skipPreviewEl.classList.toggle("on", skipped);
-  skipPreviewEl.textContent = skipped ? "Preview skipped" : "Export without a preview";
-}
-
-for (const seg of previewSegs) {
-  seg.onclick = () => {
-    previewFormat = (seg.dataset.preview as PreviewFormat) ?? "SVG";
-    renderPreviewChoice();
-  };
-}
-skipPreviewEl.onclick = () => {
-  // Toggle skip; leaving skip returns to the default Vector preview.
-  previewFormat = previewFormat === "NONE" ? "SVG" : "NONE";
-  renderPreviewChoice();
-};
-
-function renderOutputChoice(): void {
-  for (const seg of outputSegs) {
-    seg.setAttribute("aria-pressed", String(seg.dataset.output === outputMode));
-  }
-}
-for (const seg of outputSegs) {
-  seg.onclick = () => {
-    outputMode = seg.dataset.output === "single" ? "single" : "folder";
-    renderOutputChoice();
-  };
-}
-
-renderPreviewChoice();
-renderOutputChoice();
-
 /** Friendly, jargon-free label for a Figma node type (e.g. "Component set"). */
 function typeLabel(type: string): string {
   const known: Record<string, string> = {
@@ -296,20 +245,11 @@ function plainLine(runs: { text: string; bold?: boolean }[]): HTMLElement {
   return p;
 }
 
-/** The plain-language "what was written" line, adapting to the Output choice. */
+/** The plain-language "what was written" line. */
 function wroteLine(ctx: ReportContext, s: ExportSummary): HTMLElement {
   const name = s.target.name;
-  if (ctx.outputMode === "single") {
-    return plainLine([
-      { text: "Saved your " },
-      { text: name, bold: true },
-      { text: " as a " },
-      { text: "single SVG file", bold: true },
-      { text: " — everything bundled into one file." },
-    ]);
-  }
   const tail: string[] = [];
-  if (s.preview.produced) tail.push("a preview you can open");
+  if (s.preview.svg || s.preview.png) tail.push("a preview you can open");
   const parts: string[] = [];
   if (ctx.iconCount > 0) parts.push(`${ctx.iconCount} icon${ctx.iconCount === 1 ? "" : "s"}`);
   if (ctx.imageCount > 0) parts.push(`${ctx.imageCount} image${ctx.imageCount === 1 ? "" : "s"}`);
@@ -338,10 +278,11 @@ function techDetail(s: ExportSummary): HTMLElement {
     tile(s.components.total, `components · ${s.components.local} local / ${s.components.remote} linked`),
   );
   stats.appendChild(tile(s.textLayerCount, "text layers"));
-  const previewLabel = s.preview.skipped
-    ? "skipped"
-    : s.preview.produced
-      ? s.preview.format.toLowerCase()
+  const previewParts = [s.preview.svg && "svg", s.preview.png && "png"].filter(Boolean);
+  const previewLabel = s.preview.svgSkipped
+    ? "png only"
+    : previewParts.length
+      ? previewParts.join(" + ")
       : "none";
   stats.appendChild(tile(previewLabel, "preview"));
   wrap.appendChild(stats);
@@ -404,9 +345,9 @@ function warningItems(s: ExportSummary): string[] {
       `Very large selection. We saved the first ${s.truncatedAt.toLocaleString()} layers — export a smaller frame to include everything.`,
     );
   }
-  if (s.preview.skipped) {
+  if (s.preview.svgSkipped) {
     items.push(
-      "Preview image skipped — this artwork was too complex for an SVG preview. Everything else was saved; try the Image (PNG) preview next time.",
+      "SVG preview skipped — this artwork was too large for a vector preview. The PNG preview and HTML wrapper were still saved.",
     );
   }
   const failed = s.remoteMasterErrors.length;
@@ -474,7 +415,6 @@ function resetToReady(): void {
 interface ReportContext {
   path: string;
   previewPath?: string;
-  outputMode: "folder" | "single";
   iconCount: number;
   imageCount: number;
 }
@@ -631,9 +571,7 @@ function startExport(): void {
     {
       pluginMessage: {
         type: "export",
-        preview: previewFormat,
         resolveRemote: resolveRemoteEl.checked,
-        library: outputMode === "folder",
         outputDir: outputDirEl.value.trim(),
         endpoint: endpointEl.value.trim(),
       },
@@ -662,21 +600,16 @@ async function postPayload(
   svgBytes: Uint8Array | null,
   pngBytes: Uint8Array | null,
   icons: { name: string; bytes: Uint8Array }[],
-  library: boolean,
 ): Promise<PostResult> {
   const assets: AssetFile[] = [];
 
   if (svgBytes) {
     const raw = new TextDecoder().decode(svgBytes);
-    // With the library on, pull raster images out to files (small SVG + a
-    // preview.html wrapper on the server side); otherwise keep it self-contained.
-    if (library) {
-      const { svg, assets: images } = externalizeSvgImages(raw);
-      payload.svg = svg;
-      assets.push(...images);
-    } else {
-      payload.svg = raw;
-    }
+    // Pull raster images out to files (keeping the SVG small); the server writes
+    // a preview.html that inlines the SVG so those external images still render.
+    const { svg, assets: images } = externalizeSvgImages(raw);
+    payload.svg = svg;
+    assets.push(...images);
   }
   if (pngBytes) payload.png = bytesToBase64(pngBytes);
 
@@ -806,7 +739,7 @@ window.onmessage = async (event: MessageEvent) => {
     return;
   }
   if (msg.type === "batch-item") {
-    const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons, msg.library);
+    const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons);
     const summary = msg.payload.summary;
     batchResults.push({
       name: msg.name,
@@ -834,7 +767,7 @@ window.onmessage = async (event: MessageEvent) => {
   }
   if (msg.type !== "result") return;
 
-  const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons, msg.library);
+  const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons);
   endExporting();
   if (result.ok) {
     clearErrors();
@@ -842,7 +775,6 @@ window.onmessage = async (event: MessageEvent) => {
     renderReport(msg.payload.summary, {
       path: result.body.path || "written",
       previewPath: result.body.preview,
-      outputMode,
       iconCount: result.iconCount,
       imageCount: result.imageCount,
     });

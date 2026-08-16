@@ -99,7 +99,7 @@ Most projects already have an icon library (`lucide-react`, `@heroicons`, a loca
 
 Confirm your rebuild against the export — you have vision, use it. Render your build and the design to PNGs of the **same width**, then compare.
 
-**Render the design from `preview.svg`, not `preview.html`.** `preview.html` wraps the SVG in `padding` + centering + `max-width` scaling, so it renders offset and shrunk — diffing against it is meaningless. Use the raw `preview.svg` (or a `preview.png`) for the true canvas.
+**Render the design from `preview.svg`, not `preview.html`.** `preview.html` renders the SVG at 1:1 but centers it in the viewport, so a screenshot picks up the page's flex centering and viewport size rather than the SVG's exact bounds. Rasterize the raw `preview.svg` (or use `preview.png`) for the true canvas.
 
 ### Getting the two PNGs
 
