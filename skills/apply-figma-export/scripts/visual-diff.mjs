@@ -4,9 +4,14 @@
 //
 // Requires pixelmatch:  npm i -D pixelmatch   (tiny, pure-JS, no deps of its own).
 // Usage: node visual-diff.mjs <a.png> <b.png> [diff.png] [threshold=0.1]
+//               [--strip [strip.png]] [--stack] [--view-scale 0.3]
 //   threshold is pixelmatch's 0..1 colour distance (default 0.1). Anti-aliased edges are
 //   detected and NOT counted (includeAA:false), so font hinting / AA no longer inflate the %.
 //   Genuinely different fonts/icons/colours still differ — that's real, read the map.
+//   --strip writes ONE Read-able PNG: build | design | diff, each panel tagged with a
+//   colour bar (blue / amber / red) in that fixed order (--stack for a column).
+//   --view-scale shrinks tall full-page shots. Reuses this file's own PNG codec —
+//   no ImageMagick/sharp — so it works in any project.
 // Exit 0 if run OK (see printed %), 2 on bad args / size mismatch / unsupported PNG.
 // Supports 8-bit non-interlaced PNG, color types 0/2/4/6 (gray, RGB, gray+A, RGBA).
 import { readFileSync, writeFileSync } from "node:fs";
@@ -92,9 +97,18 @@ function encodePNG(width, height, rgba) {
   return Buffer.concat([SIG, chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-const [, , aPath, bPath, outPath = "diff.png", thrArg] = process.argv;
+// ---- args: positional a,b,[out],[threshold] + flags ----
+const argv = process.argv.slice(2), pos = [], flags = {};
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i];
+  if (a === "--strip") flags.strip = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : "strip.png";
+  else if (a === "--stack") flags.stack = true;
+  else if (a === "--view-scale") flags.viewScale = Number(argv[++i]);
+  else if (!a.startsWith("--")) pos.push(a);
+}
+const [aPath, bPath, outPath = "diff.png", thrArg] = pos;
 if (!aPath || !bPath) {
-  console.error("Usage: node visual-diff.mjs <a.png> <b.png> [diff.png] [threshold=0.1]");
+  console.error("Usage: node visual-diff.mjs <a.png> <b.png> [diff.png] [threshold=0.1] [--strip [out]] [--stack] [--view-scale n]");
   process.exit(2);
 }
 const threshold = Number(thrArg ?? 0.1);
@@ -119,3 +133,38 @@ const diff = pixelmatch(aData, bData, out, width, height, { threshold, includeAA
 writeFileSync(outPath, encodePNG(width, height, out));
 const total = width * height;
 console.log(`${diff}/${total} px differ (${(diff / total * 100).toFixed(2)}%, anti-aliasing ignored) — wrote ${outPath}`);
+
+// ---- optional --strip: one Read-able build|design|diff PNG, panels colour-tagged ----
+// build=blue, design=amber, diff=red, always in that order — a coloured bar heads each
+// panel (no text, so no bundled font needed). Pure Node, reuses the codec above.
+if (flags.strip) {
+  const resize = (img, sc) => {
+    if (sc === 1) return img;
+    const w = Math.max(1, Math.round(img.width * sc)), h = Math.max(1, Math.round(img.height * sc)), o = Buffer.alloc(w * h * 4);
+    for (let y = 0; y < h; y++) { const sy = Math.min(img.height - 1, Math.floor(y / sc)); for (let x = 0; x < w; x++) { const sx = Math.min(img.width - 1, Math.floor(x / sc)); img.data.copy(o, (y * w + x) * 4, (sy * img.width + sx) * 4, (sy * img.width + sx) * 4 + 4); } }
+    return { width: w, height: h, data: o };
+  };
+  const blit = (dst, dw, dx, dy, src, sw, sh) => { for (let y = 0; y < sh; y++) src.copy(dst, ((dy + y) * dw + dx) * 4, y * sw * 4, (y + 1) * sw * 4); };
+  const fillRect = (dst, dw, x, y, w, h, c) => { for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) { const o = (yy * dw + xx) * 4; dst[o] = c[0]; dst[o + 1] = c[1]; dst[o + 2] = c[2]; dst[o + 3] = 255; } };
+
+  const names = ["build", "design", "diff"];
+  const colors = [[59, 130, 246], [245, 158, 11], [239, 68, 68]]; // blue / amber / red
+  const vs = flags.viewScale || 1;
+  const panels = [aData, bData, out].map((data) => resize({ width, height, data }, vs));
+  const bg = [24, 27, 34], barH = 12, gap = 8;
+  const pw = panels[0].width, ph = panels[0].height;
+  const W = flags.stack ? pw : panels.length * pw + (panels.length - 1) * gap;
+  const H = flags.stack ? panels.length * (barH + ph) + (panels.length - 1) * gap : barH + ph;
+  const cv = Buffer.alloc(W * H * 4);
+  for (let i = 0; i < W * H; i++) { cv[i * 4] = bg[0]; cv[i * 4 + 1] = bg[1]; cv[i * 4 + 2] = bg[2]; cv[i * 4 + 3] = 255; }
+  panels.forEach((p, i) => {
+    const [bx, by, px, py] = flags.stack
+      ? [0, i * (barH + ph + gap), 0, i * (barH + ph + gap) + barH]
+      : [i * (pw + gap), 0, i * (pw + gap), barH];
+    fillRect(cv, W, bx, by, pw, barH, colors[i]);
+    blit(cv, W, px, py, p.data, p.width, p.height);
+  });
+  writeFileSync(flags.strip, encodePNG(W, H, cv));
+  const order = flags.stack ? "top→bottom" : "left→right";
+  console.log(`wrote ${flags.strip} — ${order}: ${names.map((n, i) => `${n}=${["blue", "amber", "red"][i]}`).join(", ")}${vs !== 1 ? ` @${vs}x` : ""}`);
+}
