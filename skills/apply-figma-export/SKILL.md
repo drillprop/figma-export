@@ -1,6 +1,6 @@
 ---
 name: apply-figma-export
-description: Rebuild a Figma design in code from a figma-export bundle. Use when there's a figma-export folder on disk (node.json + components.json + meta.json + a preview) and the user asks to implement, build, or code up that design — "implement this Figma export", "turn this export into components", "build this design".
+description: Rebuild a Figma design in code from a figma-export bundle. Use when there's a figma-export folder on disk (node.json + figma-components.json + meta.json + a preview) and the user asks to implement, build, or code up that design — "implement this Figma export", "turn this export into components", "build this design".
 ---
 
 # Apply a Figma Export
@@ -14,7 +14,7 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 | File | What it is |
 | --- | --- |
 | `node.json` | The full node subtree — your source of truth for structure and style. |
-| `components.json` | Every component used, with variant axes/values (+ resolved library masters). |
+| `figma-components.json` | Every component used, with variant axes/values (+ resolved library masters). |
 | `meta.json` | Summary: node/text counts, node types, component tallies, truncation flags. |
 | `remote-masters.json` | Master definitions for library components, when resolved. |
 | `preview.html` | **Open this first** — the rendered design. Your visual target. |
@@ -70,7 +70,7 @@ Auto-layout is Figma's flexbox: `layoutMode: HORIZONTAL | VERTICAL` → `display
 
 ### Components & variants
 
-An `INSTANCE` node points at a component via `mainComponentName`/`mainComponentKey` and carries `componentProperties`. `components.json` is the catalog: each entry has `variantProperties` (the axes, e.g. `{ Size: ["sm","md"], Style: ["Primary"] }`) and each instance's `variantValues` (its selection).
+An `INSTANCE` node points at a component via `mainComponentName`/`mainComponentKey` and carries `componentProperties`. `figma-components.json` is the catalog: each entry has `variantProperties` (the axes, e.g. `{ Size: ["sm","md"], Style: ["Primary"] }`) and each instance's `variantValues` (its selection).
 
 - One component **set** → one reusable component in the project.
 - Variant axes → props/variants (e.g. a `variant`/`size` prop, or a design-system component's existing props).
@@ -91,7 +91,7 @@ Most projects already have an icon library (`lucide-react`, `@heroicons`, a loca
 1. **Locate the bundle.** Find the `node.json` the user means (they may point at a folder). Read `meta.json` for scale and `truncated`.
 2. **See the target.** Open `preview.html` (or `preview.png`) so you're matching a real design, not guessing from JSON.
 3. **Learn the house style.** Before writing anything, check how *this* project builds UI — component library, **icon library/set** (see [Icons](#icons)), styling approach, token/theme source, folder conventions. Search the whole workspace, not just the current app — a shared `ui`/design-system package or sibling monorepo package often owns the real components. Match whatever the project already uses; the export is data, not a style mandate.
-4. **Map components first.** For each distinct master in `components.json`, decide: does an existing project component cover it, or do you build one? Turn variant axes into props.
+4. **Map components first.** For each distinct master in `figma-components.json`, decide: does an existing project component cover it, or do you build one? Turn variant axes into props.
 5. **Build outermost-in.** Translate the root container (auto-layout → flex/grid, [Layout](#layout)), then children. For icons, prefer a matching library icon and fall back to `preview.assets/` ([Icons](#icons)); reuse extracted images from `preview.assets/` rather than reconstructing vectors.
 6. **Verify against the preview.** Compare your result to `preview.html`: spacing, alignment, radius, colors. Convert 0–1 colors and px correctly. Substitute tokens where `boundVariables` appears. Then run a [Visual check](#visual-check).
 
@@ -101,32 +101,23 @@ Confirm your rebuild against the export — you have vision, use it. Render your
 
 **Rasterize the design from `preview.html`, not the raw `preview.svg`.** Opened directly, `preview.svg` is in the browser's SVG secure-static mode and won't load the externalized `preview.assets/` images — you'd lose every raster fill. `preview.html` inlines the SVG so those images render. It centers the SVG, but sizing the headless window to the SVG's own `width`/`height` makes the centering a no-op (element == viewport), giving exact 1:1 bounds with images intact. (`preview.png` is also a faithful ground-truth raster.)
 
-### Getting the two PNGs
+Run all four steps in order, every time — each writes an artifact the next one loads.
 
-`box-diff` needs no screenshot — hand it the build's dev-server URL or built HTML and it renders internally. Only `visual-diff` / `compare` need captured PNGs, both at the design's frame width (`node.json`'s root `absoluteBoundingBox.width`, e.g. 1440):
+**0. Install deps** in the target project (skip either already present): `npm i -D playwright pixelmatch`. Playwright uses system Chrome, no browser download; `make-compare` needs neither.
 
-- **Build →** screenshot your running build full-page: headless Chrome (`--headless=new --screenshot=build.png --window-size=<w>,<tall>` on the dev-server URL, then trim), or Playwright `page.screenshot({ fullPage: true })`.
-- **Design →** rasterize `preview.html` at the SVG's own size: headless Chrome (`--headless=new --screenshot=design.png --window-size=<w>,<svgHeight>` — the inlined SVG carries its own `width`/`height`, so the window matches it exactly, the centering is neutralized, and `preview.assets/` images render). `preview.png` works too. Avoid `magick preview.svg …` — it drops the external images.
+**1. Capture PNGs** at the design's frame width (`node.json` root `absoluteBoundingBox.width`, e.g. 1440): `build.png` (build full-page) and `design.png` (rasterize `preview.html`). `visual-diff` needs **identical width and height** — pad both to the taller with white: `magick in.png -background white -gravity North -extent <w>x<H> out.png`.
 
-`visual-diff` requires **identical width _and_ height** — full-page heights rarely match, so pad both to the taller with white before diffing: `magick in.png -background white -gravity North -extent <w>x<H> out.png`.
+**2. `box-diff` — layout.** `node scripts/box-diff.mjs <build.html|dev-url> <bundle>/node.json`. Prints Δx/Δy/Δw/Δh, writes `pairs.json` (step 4 loads it). Immune to fonts/color. Emit `data-fig-id="<node id>"` on build elements for exact pairing.
 
-Three bundled tools, by the question you're asking:
+**3. `visual-diff` — appearance.** `node scripts/visual-diff.mjs build.png design.png diff.png`. Red = differ; **read the map, not the %** — different fonts/icons inflate it.
 
-| Tool | Answers | Notes |
-| --- | --- | --- |
-| `scripts/make-compare.mjs <build.png> <design.png>` | *Does it look right?* (human review) | Writes a self-contained `compare.html` — **slider / onion-skin / blink**, plus a **Box-diff** overlay that's **on by default**: it auto-loads `./pairs.json` from box-diff (override with `--boxes <path>`, skip with `--no-boxes`). Node built-ins. |
-| `scripts/box-diff.mjs <build.html> <bundle>/node.json` | *Is everything in the right place & size?* (layout) | **Playwright** (`npm i -D playwright`). Pairs rendered elements to Figma nodes; prints Δx/Δy/Δw/Δh, writes `pairs.json`. Immune to fonts/color. **Layout only.** |
-| `scripts/visual-diff.mjs <build.png> <design.png> diff.png` | *Which pixels differ?* (appearance) | **pixelmatch** (`npm i -D pixelmatch`). Same-size PNGs; red = differ. Ignores anti-aliasing, but genuinely different fonts/icons still inflate the %, so **read the map, not the number**. |
+**4. `make-compare` — human review.** `node scripts/make-compare.mjs build.png design.png`. Writes `compare.html` (slider / onion-skin / blink + box-diff overlay from `pairs.json`) — the artifact a human opens.
 
-**Expected to differ, don't chase:** project font vs Figma font, library icon vs exported glyph, token color vs raw hex. The rebuild wears the house style ([step 3](#workflow)) — those aren't bugs. Use **box-diff** for placement, **visual-diff/compare** for appearance, and your own eyes on `compare.html` to judge what actually matters.
-
-For sharper box-diff pairing, have the build emit `data-fig-id="<node id>"` on elements — the script pairs those exactly, falling back to text/geometry otherwise.
+**Expected to differ, don't chase:** project font vs Figma font, library icon vs exported glyph, token color vs raw hex — the rebuild wears the house style ([step 3](#workflow)).
 
 ### Fix loop
 
-**Layout is yours to close.** box-diff prints text: each Δ past tolerance is a placement bug you own — edit, re-run, repeat until the only Δs left are expected differences ([above](#visual-check)).
-
-**Appearance is not.** visual-diff/compare can't tell a real colour bug from the house style, so don't chase their %. Render `compare.html` and let a human make the final call.
+**Layout is yours to close** — each box-diff Δ past tolerance is a placement bug: edit, re-run, repeat until only expected differences remain. **Appearance is a human's call** — `compare.html` can't tell a real color bug from house style, so don't chase the %; open it and let a human judge.
 
 ## Related: Figma's own MCP server
 
