@@ -4,9 +4,13 @@
 //
 // Requires pixelmatch:  npm i -D pixelmatch   (tiny, pure-JS, no deps of its own).
 // Usage: node visual-diff.mjs <a.png> <b.png> [diff.png] [threshold=0.1]
+//               [--strip [strip.png]] [--stack] [--labels A,B,C] [--view-scale 0.3]
 //   threshold is pixelmatch's 0..1 colour distance (default 0.1). Anti-aliased edges are
 //   detected and NOT counted (includeAA:false), so font hinting / AA no longer inflate the %.
 //   Genuinely different fonts/icons/colours still differ — that's real, read the map.
+//   --strip writes ONE Read-able PNG: a:build | b:design | diff, panels labelled on-image
+//   (side-by-side; --stack for a column). --view-scale shrinks tall full-page shots. Reuses
+//   this file's own PNG codec — no ImageMagick/sharp — so it works in any project.
 // Exit 0 if run OK (see printed %), 2 on bad args / size mismatch / unsupported PNG.
 // Supports 8-bit non-interlaced PNG, color types 0/2/4/6 (gray, RGB, gray+A, RGBA).
 import { readFileSync, writeFileSync } from "node:fs";
@@ -92,9 +96,19 @@ function encodePNG(width, height, rgba) {
   return Buffer.concat([SIG, chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-const [, , aPath, bPath, outPath = "diff.png", thrArg] = process.argv;
+// ---- args: positional a,b,[out],[threshold] + flags ----
+const argv = process.argv.slice(2), pos = [], flags = {};
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i];
+  if (a === "--strip") flags.strip = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : "strip.png";
+  else if (a === "--stack") flags.stack = true;
+  else if (a === "--labels") flags.labels = argv[++i];
+  else if (a === "--view-scale") flags.viewScale = Number(argv[++i]);
+  else if (!a.startsWith("--")) pos.push(a);
+}
+const [aPath, bPath, outPath = "diff.png", thrArg] = pos;
 if (!aPath || !bPath) {
-  console.error("Usage: node visual-diff.mjs <a.png> <b.png> [diff.png] [threshold=0.1]");
+  console.error("Usage: node visual-diff.mjs <a.png> <b.png> [diff.png] [threshold=0.1] [--strip [out]] [--stack] [--labels A,B,C] [--view-scale n]");
   process.exit(2);
 }
 const threshold = Number(thrArg ?? 0.1);
@@ -119,3 +133,68 @@ const diff = pixelmatch(aData, bData, out, width, height, { threshold, includeAA
 writeFileSync(outPath, encodePNG(width, height, out));
 const total = width * height;
 console.log(`${diff}/${total} px differ (${(diff / total * 100).toFixed(2)}%, anti-aliasing ignored) — wrote ${outPath}`);
+
+// ---- optional --strip: one Read-able build|design|diff PNG (labelled, no extra deps) ----
+if (flags.strip) {
+  const F = {}, def = (c, ...r) => (F[c] = r); // 5x7 uppercase bitmap font, on-image labels
+  def(" ","     ","     ","     ","     ","     ","     ","     ");
+  def("A"," ### ","#   #","#   #","#####","#   #","#   #","#   #"); def("B","#### ","#   #","#   #","#### ","#   #","#   #","#### ");
+  def("C"," ### ","#   #","#    ","#    ","#    ","#   #"," ### "); def("D","#### ","#   #","#   #","#   #","#   #","#   #","#### ");
+  def("E","#####","#    ","#    ","#### ","#    ","#    ","#####"); def("F","#####","#    ","#    ","#### ","#    ","#    ","#    ");
+  def("G"," ### ","#   #","#    ","# ###","#   #","#   #"," ### "); def("H","#   #","#   #","#   #","#####","#   #","#   #","#   #");
+  def("I","#####","  #  ","  #  ","  #  ","  #  ","  #  ","#####"); def("J","#####","    #","    #","    #","#   #","#   #"," ### ");
+  def("K","#   #","#  # ","# #  ","##   ","# #  ","#  # ","#   #"); def("L","#    ","#    ","#    ","#    ","#    ","#    ","#####");
+  def("M","#   #","## ##","# # #","# # #","#   #","#   #","#   #"); def("N","#   #","##  #","# # #","# # #","#  ##","#   #","#   #");
+  def("O"," ### ","#   #","#   #","#   #","#   #","#   #"," ### "); def("P","#### ","#   #","#   #","#### ","#    ","#    ","#    ");
+  def("Q"," ### ","#   #","#   #","#   #","# # #","#  # "," ## #"); def("R","#### ","#   #","#   #","#### ","# #  ","#  # ","#   #");
+  def("S"," ####","#    ","#    "," ### ","    #","    #","#### "); def("T","#####","  #  ","  #  ","  #  ","  #  ","  #  ","  #  ");
+  def("U","#   #","#   #","#   #","#   #","#   #","#   #"," ### "); def("V","#   #","#   #","#   #","#   #","#   #"," # # ","  #  ");
+  def("W","#   #","#   #","#   #","# # #","# # #","## ##","#   #"); def("X","#   #","#   #"," # # ","  #  "," # # ","#   #","#   #");
+  def("Y","#   #","#   #"," # # ","  #  ","  #  ","  #  ","  #  "); def("Z","#####","    #","   # ","  #  "," #   ","#    ","#####");
+  def("0"," ### ","#   #","#  ##","# # #","##  #","#   #"," ### "); def("1","  #  "," ##  ","  #  ","  #  ","  #  ","  #  ","#####");
+  def("2"," ### ","#   #","    #","   # ","  #  "," #   ","#####"); def("3","#####","   # ","  #  ","   # ","    #","#   #"," ### ");
+  def("4","   # ","  ## "," # # ","#  # ","#####","   # ","   # "); def("5","#####","#    ","#### ","    #","    #","#   #"," ### ");
+  def("6"," ### ","#    ","#    ","#### ","#   #","#   #"," ### "); def("7","#####","    #","   # ","  #  "," #   "," #   "," #   ");
+  def("8"," ### ","#   #","#   #"," ### ","#   #","#   #"," ### "); def("9"," ### ","#   #","#   #"," ####","    #","    #"," ### ");
+  def("-","     ","     ","     ","#####","     ","     ","     "); def(".","     ","     ","     ","     ","     "," ##  "," ##  ");
+  def(":","     ","  ## ","  ## ","     ","  ## ","  ## ","     ");
+
+  const drawText = (dst, dw, dh, x, y, text, col, s) => {
+    let cx = x;
+    for (const ch of text.toUpperCase()) {
+      const g = F[ch] || F[" "];
+      for (let r = 0; r < 7; r++) for (let c = 0; c < 5; c++) if (g[r][c] === "#")
+        for (let py = 0; py < s; py++) for (let px = 0; px < s; px++) {
+          const X = cx + c * s + px, Y = y + r * s + py;
+          if (X >= 0 && X < dw && Y >= 0 && Y < dh) { const o = (Y * dw + X) * 4; dst[o] = col[0]; dst[o + 1] = col[1]; dst[o + 2] = col[2]; dst[o + 3] = 255; }
+        }
+      cx += 6 * s;
+    }
+  };
+  const resize = (img, sc) => {
+    if (sc === 1) return img;
+    const w = Math.max(1, Math.round(img.width * sc)), h = Math.max(1, Math.round(img.height * sc)), o = Buffer.alloc(w * h * 4);
+    for (let y = 0; y < h; y++) { const sy = Math.min(img.height - 1, Math.floor(y / sc)); for (let x = 0; x < w; x++) { const sx = Math.min(img.width - 1, Math.floor(x / sc)); img.data.copy(o, (y * w + x) * 4, (sy * img.width + sx) * 4, (sy * img.width + sx) * 4 + 4); } }
+    return { width: w, height: h, data: o };
+  };
+  const blit = (dst, dw, dx, dy, src, sw, sh) => { for (let y = 0; y < sh; y++) src.copy(dst, ((dy + y) * dw + dx) * 4, y * sw * 4, (y + 1) * sw * 4); };
+
+  const labels = (flags.labels ? flags.labels.split(",") : ["A: BUILD", "B: DESIGN", "DIFF"]).map((s) => s.trim());
+  const vs = flags.viewScale || 1;
+  const panels = [aData, bData, out].map((data, i) => ({ label: labels[i] || "", img: resize({ width, height, data }, vs) }));
+  const bg = [24, 27, 34], fg = [232, 234, 238], ls = 3, barH = 7 * ls + 12, gap = 8;
+  const pw = panels[0].img.width, ph = panels[0].img.height;
+  const W = flags.stack ? pw : panels.length * pw + (panels.length - 1) * gap;
+  const H = flags.stack ? panels.length * (barH + ph) + (panels.length - 1) * gap : barH + ph;
+  const cv = Buffer.alloc(W * H * 4);
+  for (let i = 0; i < W * H; i++) { cv[i * 4] = bg[0]; cv[i * 4 + 1] = bg[1]; cv[i * 4 + 2] = bg[2]; cv[i * 4 + 3] = 255; }
+  panels.forEach((p, i) => {
+    const [lx, ly, px, py] = flags.stack
+      ? [4, i * (barH + ph + gap) + 6, 0, i * (barH + ph + gap) + barH]
+      : [i * (pw + gap) + 4, 6, i * (pw + gap), barH];
+    drawText(cv, W, H, lx, ly, p.label, fg, ls);
+    blit(cv, W, px, py, p.img.data, p.img.width, p.img.height);
+  });
+  writeFileSync(flags.strip, encodePNG(W, H, cv));
+  console.log(`wrote ${flags.strip} — ${flags.stack ? "stacked" : "side-by-side"} ${panels.map((p) => p.label).join(" | ")}${vs !== 1 ? ` @${vs}x` : ""}`);
+}

@@ -5,7 +5,7 @@ description: Rebuild a Figma design in code from a figma-export bundle. Use when
 
 # Apply a Figma Export
 
-A [figma-export](https://github.com/drillprop/figma-export) bundle is a Figma node tree serialized to JSON so you can rebuild it in code **without** opening Figma or hitting its API. This skill teaches you to read that bundle and translate it into the project's own components and styles.
+A [figma-export](https://github.com/drillprop/figma-export) bundle is a Figma node tree serialized to JSON so you can rebuild it in code **without** opening Figma or hitting its API.
 
 ## The bundle
 
@@ -13,112 +13,51 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 
 | File | What it is |
 | --- | --- |
-| `node.json` | The full node subtree — your source of truth for structure and style. |
+| `node.json` | The full node subtree — source of truth for structure and style. |
 | `figma-components.json` | Every component used, with variant axes/values (+ resolved library masters). |
 | `meta.json` | Summary: node/text counts, node types, component tallies, truncation flags. |
-| `remote-masters.json` | Master definitions for library components, when resolved. |
 | `preview.html` | **Open this first** — the rendered design. Your visual target. |
 | `preview.svg` / `preview.png` | The raw preview (`preview.html` inlines the SVG so its images load). |
 | `preview.assets/` | Raster images and vector icons pulled out of the SVG, as standalone files. |
 
-**Read order:** open `preview.html` to see the goal → skim `meta.json` for scale → walk `node.json` for structure. Check `meta.json.truncated`: if `true`, the tree was capped (huge selection) and is incomplete.
+**Read order:** `preview.html` (the goal) → `meta.json` (scale; if `truncated: true` the tree was capped and is incomplete) → `node.json` (structure).
 
-**Multiple nodes:** one `<fileKey>/` dir can hold several sibling folders — a batch export writes one bundle per selected node. Each is independent; treat them one at a time — but if they're the same screen at different breakpoints (mobile / desktop / full HD — the node names usually say so, e.g. `Home/mobile`, `Home/desktop`), build one responsive component from them rather than separate ones. A folder name may carry a `-<id>` suffix to avoid collisions with a same-named sibling, so trust `meta.json`'s `nodeName` for the real name, not the folder.
+**Multiple nodes:** one `<fileKey>/` dir can hold sibling folders — one bundle per selected node. Treat each independently — *unless* they're the same screen at different breakpoints (names like `Home/mobile`, `Home/desktop`), then build one responsive component. Trust `meta.json`'s `nodeName` for the real name, not the folder (a `-<id>` suffix avoids collisions).
 
-## How Figma nodes map to code
+## How nodes map to code
 
-`node.json` is a tree of nodes. Every node has `id`, `name`, `type`, geometry, and style; containers have `children`. Use the node **`name`** for component/class names — designers name layers meaningfully. Map by `type`:
+`node.json` is a tree; every node has `id`, `name`, `type`, geometry, style; containers have `children`. Use the node **`name`** for component/class names — designers name layers meaningfully. **The field-by-field Figma→CSS tables (node types, layout, style, text) are in [`reference/mapping.md`](reference/mapping.md)** — read it when translating. The judgment that isn't a lookup:
 
-| `type` | Becomes |
-| --- | --- |
-| `FRAME`, `COMPONENT`, `INSTANCE`, `GROUP` | A container (`div` / your component). See [Layout](#layout). |
-| `TEXT` | Text; `characters` is the content. |
-| `RECTANGLE`, `ELLIPSE`, `LINE` | A styled box (background, border, radius). |
-| `VECTOR`, `BOOLEAN_OPERATION` | An icon — see [Icons](#icons). Prefer a matching icon from the project's icon library; fall back to the SVG in `preview.assets/`. |
-
-### Layout
-
-Auto-layout is Figma's flexbox: `layoutMode: HORIZONTAL | VERTICAL` → `display: flex`. `GRID` is Figma's grid auto-layout → `display: grid` (but the export only carries the *mode*, not its column/row counts or gaps — read `preview.html` to reconstruct the grid). `NONE`/absent means Figma isn't driving layout; children carry raw `x`/`y`.
-
-| Figma field | CSS |
-| --- | --- |
-| `layoutMode: HORIZONTAL \| VERTICAL` | `display: flex` + `flex-direction: row \| column` |
-| `layoutMode: GRID` | `display: grid` (columns/rows inferred from the preview) |
-| `primaryAxisAlignItems` (`MIN`/`CENTER`/`MAX`/`SPACE_BETWEEN`) | `justify-content` (`flex-start`/`center`/`flex-end`/`space-between`) |
-| `counterAxisAlignItems` (`MIN`/`CENTER`/`MAX`/`BASELINE`) | `align-items` |
-| `itemSpacing` | `gap` (px) |
-| `paddingTop/Right/Bottom/Left` | `padding` (px) |
-| `layoutWrap: WRAP` | `flex-wrap: wrap` |
-
-**Pick the layout the design wants, not the one Figma happened to use.** Match the CSS to the visual arrangement in `preview.html`: a 1-D row or stack is flex; a repeating 2-D arrangement (card gallery, equal columns, a matrix) is `grid` — even if the designer built it with nested auto-layout or absolute positioning. And `layoutMode: NONE` doesn't mean "use `position: absolute`" — Figma leaves plenty of simple frames unset. Reserve absolute positioning for genuine overlaps (a badge on an avatar, an overlay); otherwise rebuild the arrangement as flex or grid so it stays responsive. Note: the designer's Figma layout grids (column guides) aren't exported — infer columns from the preview and spacing.
-
-### Style fields
-
-| Figma | CSS |
-| --- | --- |
-| `fills[]` (SOLID) | `background` / text `color`. `color` is `{r,g,b}` in **0–1** — multiply by 255. `opacity` on the paint → alpha. |
-| `fills[]` (GRADIENT_*) | `linear-gradient` / `radial-gradient` from `gradientStops`. |
-| `fills[]` (IMAGE) | The image is in `preview.assets/` — use it as `background-image` / `<img>`. |
-| `strokes[]` + `strokeWeight` | `border` (color from the stroke's paint). |
-| `cornerRadius` / `rectangleCornerRadii` | `border-radius` (single value, or `[tl,tr,br,bl]`). |
-| `effects[]` (DROP_SHADOW/INNER_SHADOW) | `box-shadow` (offset, radius, color). BLUR → `filter: blur()`. |
-| `opacity` | `opacity`. |
-
-### Text fields
-
-`fontName.family` → `font-family`, `fontName.style` (e.g. "Bold") or `fontWeight` → `font-weight`, `fontSize` → `font-size`, `lineHeight` → `line-height`, `letterSpacing` → `letter-spacing`, `textAlignHorizontal` → `text-align`, `textCase` → `text-transform`.
-
-### Components & variants
-
-An `INSTANCE` node points at a component via `mainComponentName`/`mainComponentKey` and carries `componentProperties`. `figma-components.json` is the catalog: each entry has `variantProperties` (the axes, e.g. `{ Size: ["sm","md"], Style: ["Primary"] }`) and each instance's `variantValues` (its selection).
-
-- One component **set** → one reusable component in the project.
-- Variant axes → props/variants (e.g. a `variant`/`size` prop, or a design-system component's existing props).
-- Repeated instances of the same master → **reuse** one component, don't inline each copy.
-
-### Icons
-
-Icons are `VECTOR`/`BOOLEAN_OPERATION` nodes or `INSTANCE`s of an icon component — the node's `name` is the icon name (`home-line`, `chevron-down`). The export always extracts the SVG to `preview.assets/`, but that's the **fallback, not the default**.
-
-Most projects already have an icon library (`lucide-react`, `@heroicons`, a local `Icon` component or `icons/` folder). **Prefer a matching library icon** — it keeps the project's sizing, `currentColor`, and theming. Match by name, allowing for naming differences (`home-line` → `HomeIcon`/`house`), and confirm the glyph against `preview.html`. Only use the `preview.assets/` SVG when there's no match (a custom or branded glyph).
-
-### Design tokens
-
-`boundVariables` on a node means that value is bound to a Figma **variable** (a design token), not a raw literal. When present, prefer the project's matching token (CSS var, theme value, or whatever the project uses) over the hard-coded number/color.
+- **Layout — pick what the design *wants*, not what Figma used.** A 1-D row/stack is flex; a repeating 2-D arrangement (card gallery, equal columns) is `grid` — even if the designer built it with nested auto-layout or absolute positioning. Reserve `position: absolute` for genuine overlaps (badge on avatar); rebuild the rest as flex/grid so it stays responsive.
+- **Components & variants.** One component **set** → one reusable component; variant axes → props (or a design-system component's existing props). Repeated instances of the same master → **reuse** one component, don't inline each copy.
+- **Icons.** Icon nodes are `VECTOR`/`BOOLEAN_OPERATION` or icon `INSTANCE`s; the node `name` is the icon name. **Prefer a matching library icon** (`lucide`, `@heroicons`, a local set) over the `preview.assets/` SVG — it keeps the project's sizing/`currentColor`/theming. Fall back to the extracted SVG only for a custom/branded glyph.
+- **Design tokens.** `boundVariables` on a node means the value is bound to a Figma variable — prefer the project's matching token (CSS var, theme value) over the raw literal.
 
 ## Workflow
 
-1. **Locate the bundle.** Find the `node.json` the user means (they may point at a folder). Read `meta.json` for scale and `truncated`.
-2. **See the target.** Open `preview.html` (or `preview.png`) so you're matching a real design, not guessing from JSON.
-3. **Learn the house style.** Before writing anything, check how *this* project builds UI — component library, **icon library/set** (see [Icons](#icons)), styling approach, token/theme source, folder conventions. Search the whole workspace, not just the current app — a shared `ui`/design-system package or sibling monorepo package often owns the real components. Match whatever the project already uses; the export is data, not a style mandate.
-4. **Map components first.** For each distinct master in `figma-components.json`, decide: does an existing project component cover it, or do you build one? Turn variant axes into props.
-5. **Build outermost-in.** Translate the root container (auto-layout → flex/grid, [Layout](#layout)), then children. For icons, prefer a matching library icon and fall back to `preview.assets/` ([Icons](#icons)); reuse extracted images from `preview.assets/` rather than reconstructing vectors.
-6. **Verify against the preview.** Compare your result to `preview.html`: spacing, alignment, radius, colors. Convert 0–1 colors and px correctly. Substitute tokens where `boundVariables` appears. Then run a [Visual check](#visual-check).
+1. **Locate & scope.** Find the `node.json` the user means; read `meta.json` for scale and `truncated`.
+2. **See the target.** Open `preview.html` (or `preview.png`) — match a real design, not JSON.
+3. **Learn the house style *and* audit the render environment.** Two things, both before writing code:
+   - **House style** — how *this* project builds UI: component library, **icon set**, styling approach, token/theme source, folder conventions. Search the whole workspace (a shared `ui`/design-system package often owns the real components). Match it — the export is data, not a style mandate.
+   - **Render environment** — audit base CSS before any spacing. Root `font-size`: if it isn't 16px, every `rem`-based length is scaled (a starter's `html{font-size:18px}` makes `rem` spacing 12.5% too big — e.g. Tailwind's whole scale). Check how the project's global/reset styles rank against the styles you'll write: an unscoped element rule (`h1{}`, `img{}`) can outrank utilities or scoped styles and silently drop them (in Tailwind v4, keep resets in `@layer base` so utilities win). **Systemic CSS bugs masquerade as a dozen small per-section offsets — find the one cause before pixel-tuning.**
+4. **Extract the full spec in one pass** (not in waves — that's three re-do passes). One table before coding: per **TEXT** node (family/style/weight/size/lineHeight/letterSpacing/case — CTA labels often use a *different* font/weight than body); per **component/instance frame** (w×h, padding, `itemSpacing`→gap, `cornerRadius`, fills — button height/gap/icon-size live in the **frame's** `absoluteBoundingBox`+`itemSpacing`, not the text node); per **section** (padding, gaps). Map each master in `figma-components.json` to one reusable component; variant axes → props.
+5. **Build outermost-in, verifying each section as you go.** Translate the root container then children (see [`reference/mapping.md`](reference/mapping.md)). Run the [visual check](#visual-check) per section — don't build the whole page blind and check once at the end.
 
 ## Visual check
 
-Confirm your rebuild against the export — you have vision, use it. Render your build and the design to PNGs of the **same width**, then compare.
+Confirm your rebuild against the export — you have vision, use it. **`box-diff` (layout) is the axis you can close to zero. The pixel-diff `%` is not** — matched web fonts rasterize differently than Figma's outlines, and browser `<img>` resampling differs from Figma's PNG, flooring the diff ~10%+ even when everything is correct. Judge appearance in `compare.html` (slider/blink), never the raw %. If asked for "pixel perfect", explain this limit *before* iterating.
 
-**Rasterize the design from `preview.html`, not the raw `preview.svg`.** Opened directly, `preview.svg` is in the browser's SVG secure-static mode and won't load the externalized `preview.assets/` images — you'd lose every raster fill. `preview.html` inlines the SVG so those images render. It centers the SVG, but sizing the headless window to the SVG's own `width`/`height` makes the centering a no-op (element == viewport), giving exact 1:1 bounds with images intact. (`preview.png` is also a faithful ground-truth raster.)
+**Run the bundled scripts in `scripts/` — never hand-roll a `node -e` Playwright screenshot.** Each auto-installs its one dep on first run into `~/.cache/figma-export-visual-check` (project untouched; `FIGMA_EXPORT_NO_INSTALL=1` to opt out). Run in order — each writes what the next loads. From the build's dev-server URL (or a static `build.html`; a presentational render with no client handlers is enough) and the design's frame width (`node.json` root `absoluteBoundingBox.width`):
 
-Run all four steps in order, every time — each writes an artifact the next one loads.
+1. **`capture`** — `node scripts/capture.mjs build <build-url>` + `node scripts/capture.mjs design <bundle>/preview.html` → `build.png` + `design.png`. Scrollbar hidden, so no 15px column shift.
+2. **`box-diff`** — `node scripts/box-diff.mjs <build-url> <bundle>/node.json` → Δx/Δy/Δw/Δh + `pairs.json`. Layout only; emit `data-fig-id="<node id>"` on build elements for exact pairing. Big `Δw` on text is **expected** (Figma text is fixed-width, HTML shrink-wraps) — match a line-break with `max-width` only when it matters visually.
+3. **`visual-diff`** — `node scripts/visual-diff.mjs build.png design.png diff.png`. Read the map, not the %. Add `--strip out.png` to also write **one Read-able `build │ design │ diff` PNG** (labelled) — the artifact *you* look at with vision (`--stack` for a column). Prefer this over building a montage by hand.
+4. **`make-compare`** — `node scripts/make-compare.mjs build.png design.png` → `compare.html`, the artifact a *human* opens.
 
-**0. Deps: nothing to install** — just run the steps below. Each script auto-installs its one dep on first use (`box-diff` → `playwright`, `visual-diff` → `pixelmatch`, `make-compare` → none) into `~/.cache/figma-export-visual-check`, leaving the project untouched. To disable auto-install, set `FIGMA_EXPORT_NO_INSTALL=1` and pre-install with `npm i -D playwright pixelmatch`.
+**Judging a region** (type, a button, one section): capture the same region on each side — build by `--selector "<css>" --scale 2`, design by `--clip x y w h` (the node's box from `node.json`) — then `visual-diff a.png b.png d.png --strip s.png` and Read the strip. One flow, no hand-cropping needed.
 
-**1. Capture PNGs** at the design's frame width (`node.json` root `absoluteBoundingBox.width`, e.g. 1440): `build.png` (build full-page) and `design.png` (rasterize `preview.html`). Heights will differ (rebuild page ≠ Figma frame); that's fine — `visual-diff` pads both onto a white canvas of the larger size, content anchored top-left, so nothing is cropped. No manual resizing.
-
-**2. `box-diff` — layout.** `node scripts/box-diff.mjs <build.html|dev-url> <bundle>/node.json`. Prints Δx/Δy/Δw/Δh, writes `pairs.json` (step 4 loads it). Immune to fonts/color. Emit `data-fig-id="<node id>"` on build elements for exact pairing.
-
-**3. `visual-diff` — appearance.** `node scripts/visual-diff.mjs build.png design.png diff.png`. Red = differ; **read the map, not the %** — different fonts/icons inflate it.
-
-**4. `make-compare` — human review.** `node scripts/make-compare.mjs build.png design.png`. Writes `compare.html` (slider / onion-skin / blink + box-diff overlay from `pairs.json`) — the artifact a human opens.
-
-**Expected to differ, don't chase:** project font vs Figma font, library icon vs exported glyph, token color vs raw hex — the rebuild wears the house style ([step 3](#workflow)).
-
-### Fix loop
-
-**Layout is yours to close** — each box-diff Δ past tolerance is a placement bug: edit, re-run, repeat until only expected differences remain. **Appearance is a human's call** — `compare.html` can't tell a real color bug from house style, so don't chase the %; open it and let a human judge.
+**Fix loop:** each `box-diff` Δ past tolerance is a placement bug — edit, re-run, repeat until only expected differences remain. Appearance is a human's call — open `compare.html`, don't chase the %.
 
 ## Related: Figma's own MCP server
 
-Figma ships a [Dev Mode MCP server](https://developers.figma.com/docs/figma-mcp-server/tools-and-prompts/) that pulls design context *live* from a selected node (`get_design_context`, `get_variable_defs`, Code Connect, etc.). It's the right tool when Figma is open and reachable — but it needs a Figma session, a Dev/Full seat, and network. This skill is for the opposite case: a bundle **saved in the repo**, so an agent can rebuild the design offline, in CI, or on the free plan, with no Figma access. They don't compete — reach for the MCP when working against a live file, for these files when working against the snapshot.
+Figma's [Dev Mode MCP server](https://developers.figma.com/docs/figma-mcp-server/tools-and-prompts/) pulls design context *live* from a selected node — the right tool when Figma is open and reachable (needs a session, a Dev/Full seat, network). This skill is for the opposite case: a bundle **saved in the repo**, rebuilt offline, in CI, or on the free plan.
