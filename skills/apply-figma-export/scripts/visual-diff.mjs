@@ -98,15 +98,24 @@ if (!aPath || !bPath) {
   process.exit(2);
 }
 const threshold = Number(thrArg ?? 0.1);
-const A = decodePNG(readFileSync(aPath)), B = decodePNG(readFileSync(bPath));
-if (A.width !== B.width || A.height !== B.height) {
-  console.error(`Size mismatch: ${A.width}x${A.height} vs ${B.width}x${B.height}. Match the screenshot viewport to the export.`);
-  process.exit(2);
+let A = decodePNG(readFileSync(aPath)), B = decodePNG(readFileSync(bPath));
+// pixelmatch needs identical dimensions. Build vs design almost always differ in
+// height (rebuild page ≠ Figma frame). Pad both onto a white W×H canvas, content
+// anchored top-left, so nothing is ever cropped — no ImageMagick needed.
+const width = Math.max(A.width, B.width), height = Math.max(A.height, B.height);
+function padWhite(img) {
+  if (img.width === width && img.height === height) return img.data;
+  const buf = Buffer.alloc(width * height * 4, 0xff); // opaque white
+  for (let y = 0; y < img.height; y++)
+    img.data.copy(buf, y * width * 4, y * img.width * 4, (y + 1) * img.width * 4);
+  return buf;
 }
-const { width, height } = A, out = Buffer.alloc(width * height * 4);
+if (A.width !== width || A.height !== height || B.width !== width || B.height !== height)
+  console.error(`Padded to ${width}x${height} (a:${A.width}x${A.height} b:${B.width}x${B.height}).`);
+const aData = padWhite(A), bData = padWhite(B), out = Buffer.alloc(width * height * 4);
 // includeAA:false → anti-aliased edges are detected and left uncounted (drawn faded, not red),
 // so font hinting / AA don't inflate the %. Real content differences still count and show red.
-const diff = pixelmatch(A.data, B.data, out, width, height, { threshold, includeAA: false });
+const diff = pixelmatch(aData, bData, out, width, height, { threshold, includeAA: false });
 writeFileSync(outPath, encodePNG(width, height, out));
 const total = width * height;
 console.log(`${diff}/${total} px differ (${(diff / total * 100).toFixed(2)}%, anti-aliasing ignored) — wrote ${outPath}`);
