@@ -7,7 +7,7 @@ export type VariantAxes = Record<string, string[]>;
 /** A single variant's selections, e.g. { Style: "Primary", Size: "md" }. */
 export type VariantValues = Record<string, string>;
 
-/** One entry in components.json. Base fields always present; the rest are added
+/** One entry in figma-components.json. Base fields always present; the rest are added
  * when a remote (library) component's master is resolved via import-by-key. */
 export interface ComponentEntry {
   id: string;
