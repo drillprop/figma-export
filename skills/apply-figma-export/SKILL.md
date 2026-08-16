@@ -99,14 +99,14 @@ Most projects already have an icon library (`lucide-react`, `@heroicons`, a loca
 
 Confirm your rebuild against the export — you have vision, use it. Render your build and the design to PNGs of the **same width**, then compare.
 
-**Render the design from `preview.svg`, not `preview.html`.** `preview.html` renders the SVG at 1:1 but centers it in the viewport, so a screenshot picks up the page's flex centering and viewport size rather than the SVG's exact bounds. Rasterize the raw `preview.svg` (or use `preview.png`) for the true canvas.
+**Rasterize the design from `preview.html`, not the raw `preview.svg`.** Opened directly, `preview.svg` is in the browser's SVG secure-static mode and won't load the externalized `preview.assets/` images — you'd lose every raster fill. `preview.html` inlines the SVG so those images render. It centers the SVG, but sizing the headless window to the SVG's own `width`/`height` makes the centering a no-op (element == viewport), giving exact 1:1 bounds with images intact. (`preview.png` is also a faithful ground-truth raster.)
 
 ### Getting the two PNGs
 
 `box-diff` needs no screenshot — hand it the build's dev-server URL or built HTML and it renders internally. Only `visual-diff` / `compare` need captured PNGs, both at the design's frame width (`node.json`'s root `absoluteBoundingBox.width`, e.g. 1440):
 
 - **Build →** screenshot your running build full-page: headless Chrome (`--headless=new --screenshot=build.png --window-size=<w>,<tall>` on the dev-server URL, then trim), or Playwright `page.screenshot({ fullPage: true })`.
-- **Design →** rasterize `preview.svg` at the same width: headless Chrome (`--window-size=<w>,<svgHeight>`, the SVG carries its own `width`/`height`) or `magick preview.svg design.png`.
+- **Design →** rasterize `preview.html` at the SVG's own size: headless Chrome (`--headless=new --screenshot=design.png --window-size=<w>,<svgHeight>` — the inlined SVG carries its own `width`/`height`, so the window matches it exactly, the centering is neutralized, and `preview.assets/` images render). `preview.png` works too. Avoid `magick preview.svg …` — it drops the external images.
 
 `visual-diff` requires **identical width _and_ height** — full-page heights rarely match, so pad both to the taller with white before diffing: `magick in.png -background white -gravity North -extent <w>x<H> out.png`.
 
