@@ -37,6 +37,54 @@ export interface SerializedNode {
   [key: string]: unknown;
 }
 
+/** A design token's value for one mode. Primitives pass through; colors become
+ * a readable hex plus the raw RGBA; a reference to another variable is kept as an
+ * alias (with the target's id and — once resolved — its name). */
+export type TokenValue =
+  | number
+  | string
+  | boolean
+  | { hex: string; rgba: { r: number; g: number; b: number; a: number } }
+  | { alias: string; name: string | null };
+
+/** A Figma Variable, resolved into a design token. `boundVariables` ids in
+ * node.json / remote-masters.json join against `id`. */
+export interface DesignToken {
+  id: string;
+  /** Variable name, typically slash-grouped, e.g. "color/primary/500". */
+  name: string;
+  key: string | null;
+  remote: boolean;
+  /** "COLOR" | "FLOAT" | "STRING" | "BOOLEAN". */
+  resolvedType: string;
+  description: string;
+  collectionId: string;
+  collectionName: string;
+  scopes?: string[];
+  /** Value per mode, keyed by the mode's name (falls back to its id if unnamed). */
+  valuesByMode: Record<string, TokenValue>;
+}
+
+/** A Figma variable collection: the group a token belongs to and its modes
+ * (e.g. Light/Dark themes). */
+export interface VariableCollectionInfo {
+  id: string;
+  name: string;
+  key: string | null;
+  remote: boolean;
+  defaultModeId: string;
+  modes: { modeId: string; name: string }[];
+}
+
+/** variables.json: the file's full token catalog — every Figma Variable in every
+ * local collection (plus referenced library tokens), resolved to names +
+ * per-mode values, with their collections. Join node.json's `boundVariables`
+ * alias ids against `tokens[].id`. */
+export interface VariablesExport {
+  collections: VariableCollectionInfo[];
+  tokens: DesignToken[];
+}
+
 export interface ExportSummary {
   target: { id: string; name: string; type: string };
   totalNodes: number;
@@ -47,6 +95,9 @@ export interface ExportSummary {
   sets: { name: string; axes: VariantAxes }[];
   remoteMastersResolved: number;
   remoteMasterErrors: { name: string; error: string }[];
+  /** Count of design tokens + collections resolved from Figma Variables, when any
+   * were referenced. Absent when the selection uses no variables. */
+  variables?: { collections: number; tokens: number };
   truncated: boolean;
   truncatedAt: number | null;
   /** Every export now writes preview.svg + preview.png + preview.html. `svg`/`png`
@@ -72,6 +123,9 @@ export interface ExportPayload {
   node: SerializedNode;
   components: ComponentEntry[];
   remoteMasters: SerializedNode[];
+  /** The file's design tokens (Figma Variables) as a full catalog, resolved to
+   * names + per-mode values. Absent when the file has no variables. */
+  variables?: VariablesExport;
   /** SVG preview as text. When `assets` carries externalized images, the SVG
    * references them as `preview.assets/<name>` (see preview.html); otherwise
    * it's self-contained with images inline. */

@@ -4,9 +4,13 @@
 // to the local figma-export server. Runs in the Figma sandbox (no `fetch`).
 import type {
   ComponentEntry,
+  DesignToken,
   ExportPayload,
   ExportSummary,
   SerializedNode,
+  TokenValue,
+  VariableCollectionInfo,
+  VariablesExport,
   VariantAxes,
   VariantValues,
 } from "../../src/shared/types";
@@ -253,6 +257,164 @@ async function resolveRemoteMasters(
     }
   }
   return masters;
+}
+
+// --- design tokens (Figma Variables) -----------------------------------
+// `boundVariables` on a node only records opaque VariableIDs. This dumps the
+// file's full token catalog — every variable in every local collection — into
+// named tokens with per-mode values, plus any remote/library tokens the export
+// references (so bound ids from imported components still resolve). An agent can
+// then build a token layer and map any bound id -> a real token name + value.
+
+/** Figma's bound-variable alias marker: { type: "VARIABLE_ALIAS", id }. */
+function isVariableAlias(value: unknown): value is { type: "VARIABLE_ALIAS"; id: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "VARIABLE_ALIAS" &&
+    typeof (value as { id?: unknown }).id === "string"
+  );
+}
+
+/** Recursively gather every VariableID referenced (via VARIABLE_ALIAS) under a
+ * serialized value — i.e. anything a node's `boundVariables` points at. */
+function collectVariableIds(value: unknown, ids: Set<string>): void {
+  if (!value || typeof value !== "object") return;
+  if (isVariableAlias(value)) {
+    ids.add(value.id);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectVariableIds(item, ids);
+    return;
+  }
+  for (const item of Object.values(value as Record<string, unknown>)) {
+    collectVariableIds(item, ids);
+  }
+}
+
+/** 0..1 channel -> two-digit hex. */
+function hexChannel(n: number): string {
+  const v = Math.max(0, Math.min(255, Math.round(n * 255)));
+  return v.toString(16).padStart(2, "0");
+}
+
+/** Figma RGB/RGBA (0..1 floats) -> "#rrggbb" or "#rrggbbaa" (alpha only when <1). */
+function rgbaToHex(c: { r: number; g: number; b: number; a?: number }): string {
+  const base = `#${hexChannel(c.r)}${hexChannel(c.g)}${hexChannel(c.b)}`;
+  return c.a === undefined || c.a >= 1 ? base : base + hexChannel(c.a);
+}
+
+/** Convert one raw variable value (for a mode) into a readable TokenValue.
+ * Aliases keep their target id (name is backfilled once all tokens are known). */
+function toTokenValue(raw: unknown, resolvedType: string): TokenValue {
+  if (isVariableAlias(raw)) return { alias: raw.id, name: null };
+  if (
+    resolvedType === "COLOR" &&
+    typeof raw === "object" &&
+    raw !== null &&
+    "r" in (raw as Record<string, unknown>)
+  ) {
+    const c = raw as { r: number; g: number; b: number; a?: number };
+    return { hex: rgbaToHex(c), rgba: { r: c.r, g: c.g, b: c.b, a: c.a ?? 1 } };
+  }
+  return raw as TokenValue;
+}
+
+/**
+ * Dump the file's design tokens. Seeds from every variable in every local
+ * collection (the full catalog) plus the VariableIDs referenced in the tree +
+ * remote masters (to pull in library tokens used by imported components), then
+ * resolves each variable and its collection, following alias chains. Returns
+ * null only when the file has no variables at all.
+ */
+async function resolveVariables(
+  node: SerializedNode,
+  remoteMasters: SerializedNode[],
+): Promise<VariablesExport | null> {
+  const rootIds = new Set<string>();
+  collectVariableIds(node, rootIds);
+  for (const master of remoteMasters) collectVariableIds(master, rootIds);
+
+  // Full catalog: seed with every variable in every local collection.
+  try {
+    const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+    for (const collection of localCollections) {
+      for (const variableId of collection.variableIds) rootIds.add(variableId);
+    }
+  } catch {
+    /* variables API unavailable in this context */
+  }
+
+  if (rootIds.size === 0) return null;
+
+  const tokens = new Map<string, DesignToken>();
+  const collections = new Map<string, VariableCollectionInfo>();
+  const seen = new Set<string>();
+  const queue = [...rootIds];
+
+  while (queue.length > 0) {
+    const id = queue.shift() as string;
+    if (seen.has(id)) continue;
+    seen.add(id);
+
+    let variable: AnyNode;
+    try {
+      variable = await figma.variables.getVariableByIdAsync(id);
+    } catch {
+      continue; // unknown / inaccessible variable id — skip
+    }
+    if (!variable) continue;
+
+    let collection: AnyNode = null;
+    try {
+      collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+    } catch {
+      /* collection unavailable (e.g. unpublished remote) */
+    }
+    if (collection && !collections.has(collection.id)) {
+      collections.set(collection.id, {
+        id: collection.id,
+        name: collection.name,
+        key: collection.key || null,
+        remote: Boolean(collection.remote),
+        defaultModeId: collection.defaultModeId,
+        modes: collection.modes.map((m: AnyNode) => ({ modeId: m.modeId, name: m.name })),
+      });
+    }
+    const modeName = (modeId: string): string =>
+      collection?.modes.find((m: AnyNode) => m.modeId === modeId)?.name ?? modeId;
+
+    const valuesByMode: Record<string, TokenValue> = {};
+    for (const [modeId, raw] of Object.entries(variable.valuesByMode ?? {})) {
+      if (isVariableAlias(raw) && !seen.has(raw.id)) queue.push(raw.id);
+      valuesByMode[modeName(modeId)] = toTokenValue(raw, variable.resolvedType);
+    }
+
+    tokens.set(id, {
+      id,
+      name: variable.name,
+      key: variable.key || null,
+      remote: Boolean(variable.remote),
+      resolvedType: variable.resolvedType,
+      description: variable.description || "",
+      collectionId: variable.variableCollectionId,
+      collectionName: collection?.name ?? "",
+      scopes: Array.isArray(variable.scopes) ? variable.scopes : undefined,
+      valuesByMode,
+    });
+  }
+
+  // Backfill alias target names now that every reachable token is resolved.
+  for (const token of tokens.values()) {
+    for (const value of Object.values(token.valuesByMode)) {
+      if (value && typeof value === "object" && "alias" in value) {
+        value.name = tokens.get(value.alias)?.name ?? null;
+      }
+    }
+  }
+
+  return { collections: [...collections.values()], tokens: [...tokens.values()] };
 }
 
 /** Export settings for a PNG preview, bounding resolution so the raster stays small. */
@@ -515,10 +677,24 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
     console.log(`[figma-export] extracted ${icons.length} icon(s)`);
   }
 
+  figma.ui.postMessage({ type: "progress", message: "Resolving design tokens…" });
+  const variables = await resolveVariables(node, remoteMasters);
+  if (variables) {
+    console.log(
+      `[figma-export] resolved ${variables.tokens.length} token(s) across ${variables.collections.length} collection(s)`,
+    );
+  }
+
   const summary = summarize(node, components, remoteMasters);
   summary.truncated = ctx.truncated;
   summary.truncatedAt = ctx.truncated ? MAX_NODES : null;
   summary.preview = { svg: Boolean(svgBytes), png: Boolean(pngBytes), svgSkipped };
+  if (variables) {
+    summary.variables = {
+      collections: variables.collections.length,
+      tokens: variables.tokens.length,
+    };
+  }
 
   const payload: ExportPayload = {
     outputDir: msg.outputDir,
@@ -531,6 +707,7 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
     node,
     components,
     remoteMasters,
+    ...(variables ? { variables } : {}),
   };
 
   return { payload, svgBytes, pngBytes, icons };

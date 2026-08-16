@@ -53,6 +53,7 @@ and pick `plugin/manifest.json`.
      figma-components.json  unique components used (+ variant values, remote masters)
      meta.json           ids, timestamp, and the summary
      remote-masters.json resolved library-component definitions (if any)
+     variables.json      resolved design tokens referenced by the export (if any)
      preview.svg          vector reference
      preview.png          raster reference
      preview.html         open this to view the SVG (centered, no padding)
@@ -68,6 +69,15 @@ and pick `plugin/manifest.json`.
    **`preview.html`** inlines the SVG (centered, with no page padding) so those
    images render — open that for the truest view. Pure-vector nodes produce no
    assets.
+
+**Design tokens.** `variables.json` is the file's full token catalog: every
+Figma **Variable** (colors, spacing, radii, etc.) in every local collection,
+resolved into named tokens with per-mode values (e.g. Light/Dark) and following
+alias chains — plus any remote/library tokens the export references. Nodes in
+`node.json` only carry opaque `boundVariables` ids — join those ids against
+`variables.json`'s `tokens[].id` to recover the token name and value, so
+generated code can emit `var(--token)` instead of hard-coded hex/px. The file is
+written whenever the file has any variables.
 
 The path you give is the exact base; want a `figma-export/` subfolder? Include
 it in the path. The server refuses to write if the folder doesn't exist.

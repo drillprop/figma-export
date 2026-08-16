@@ -180,10 +180,14 @@ app.post("/sync", async (c) => {
       assetImageCount: assets.length - assetSvgCount,
       assetSvgCount,
       hasPreviewHtml: hasSvg,
+      hasVariables: Boolean(payload.variables),
+      variableCount: payload.variables?.tokens.length ?? 0,
+      variableCollectionCount: payload.variables?.collections.length ?? 0,
       summary: payload.summary ?? null,
     };
 
     const hasRemoteMasters = (payload.remoteMasters?.length ?? 0) > 0;
+    const hasVariables = Boolean(payload.variables);
 
     // preview.assets/: raster images pulled out of the SVG + vector icon SVGs.
     if (assets.length > 0) {
@@ -210,6 +214,12 @@ app.post("/sync", async (c) => {
         ? writeFile(
             path.join(outDir, "remote-masters.json"),
             JSON.stringify(payload.remoteMasters, null, 2),
+          )
+        : Promise.resolve(),
+      hasVariables
+        ? writeFile(
+            path.join(outDir, "variables.json"),
+            JSON.stringify(payload.variables, null, 2),
           )
         : Promise.resolve(),
       hasSvg

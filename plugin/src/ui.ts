@@ -325,6 +325,14 @@ function techDetail(s: ExportSummary): HTMLElement {
     wrap.appendChild(section("Linked components", linked));
   }
 
+  if (s.variables && s.variables.tokens > 0) {
+    const badges = el("div", { class: "chips" }, [
+      el("span", { class: "badge ok", text: `${s.variables.tokens} tokens` }),
+      el("span", { class: "badge ok", text: `${s.variables.collections} collections` }),
+    ]);
+    wrap.appendChild(section("Design tokens", badges));
+  }
+
   if (s.textSamples.length) {
     const list = el("div", { class: "samples" });
     for (const t of s.textSamples) list.appendChild(el("div", { class: "sample", text: `“${t}”` }));

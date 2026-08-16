@@ -15,6 +15,7 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 | --- | --- |
 | `node.json` | The full node subtree — source of truth for structure and style. |
 | `figma-components.json` | Every component used, with variant axes/values (+ resolved library masters). |
+| `variables.json` | The file's full token catalog — every Figma Variable in every local collection, resolved to names + per-mode values (+ referenced library tokens). Present only when the file has variables. |
 | `meta.json` | Summary: node/text counts, node types, component tallies, truncation flags. |
 | `preview.html` | **Open this first** — the rendered design. Your visual target. |
 | `preview.svg` / `preview.png` | The raw preview (`preview.html` inlines the SVG so its images load). |
@@ -31,7 +32,7 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 - **Layout — pick what the design *wants*, not what Figma used.** A 1-D row/stack is flex; a repeating 2-D arrangement (card gallery, equal columns) is `grid` — even if the designer built it with nested auto-layout or absolute positioning. Reserve `position: absolute` for genuine overlaps (badge on avatar); rebuild the rest as flex/grid so it stays responsive.
 - **Components & variants.** One component **set** → one reusable component; variant axes → props (or a design-system component's existing props). Repeated instances of the same master → **reuse** one component, don't inline each copy.
 - **Icons.** Icon nodes are `VECTOR`/`BOOLEAN_OPERATION` or icon `INSTANCE`s; the node `name` is the icon name. **Prefer a matching library icon** (`lucide`, `@heroicons`, a local set) over the `preview.assets/` SVG — it keeps the project's sizing/`currentColor`/theming. Fall back to the extracted SVG only for a custom/branded glyph.
-- **Design tokens.** `boundVariables` on a node means the value is bound to a Figma variable — prefer the project's matching token (CSS var, theme value) over the raw literal.
+- **Design tokens.** `boundVariables` on a node means the value is bound to a Figma variable — its ids are opaque, so join them against `variables.json`'s `tokens[].id` to recover the token **name** (e.g. `color/primary/500`) and per-mode value. Prefer the project's matching token (CSS var, theme value) over the raw literal; multi-mode tokens (Light/Dark) map to your theme.
 
 ## Workflow
 
