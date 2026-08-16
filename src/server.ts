@@ -183,11 +183,13 @@ app.post("/sync", async (c) => {
       hasVariables: Boolean(payload.variables),
       variableCount: payload.variables?.tokens.length ?? 0,
       variableCollectionCount: payload.variables?.collections.length ?? 0,
+      imageAssetCount: payload.images?.length ?? 0,
       summary: payload.summary ?? null,
     };
 
     const hasRemoteMasters = (payload.remoteMasters?.length ?? 0) > 0;
     const hasVariables = Boolean(payload.variables);
+    const images = payload.images ?? [];
 
     // preview.assets/: raster images pulled out of the SVG + vector icon SVGs.
     if (assets.length > 0) {
@@ -198,6 +200,21 @@ app.post("/sync", async (c) => {
           writeFile(
             path.join(assetsDir, slug(asset.name, "asset")),
             Buffer.from(asset.base64, "base64"),
+          ),
+        ),
+      );
+    }
+
+    // images/: original-bytes rasters behind IMAGE fills, named by imageHash so
+    // node.json fills can be matched to the real file.
+    if (images.length > 0) {
+      const imagesDir = path.join(outDir, "images");
+      await mkdir(imagesDir, { recursive: true });
+      await Promise.all(
+        images.map((image) =>
+          writeFile(
+            path.join(imagesDir, slug(image.name, "image")),
+            Buffer.from(image.base64, "base64"),
           ),
         ),
       );

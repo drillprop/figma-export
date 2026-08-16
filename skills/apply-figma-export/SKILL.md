@@ -19,7 +19,8 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 | `meta.json` | Summary: node/text counts, node types, component tallies, truncation flags. |
 | `preview.html` | **Open this first** — the rendered design. Your visual target. |
 | `preview.svg` / `preview.png` | The raw preview (`preview.html` inlines the SVG so its images load). |
-| `preview.assets/` | Raster images and vector icons pulled out of the SVG, as standalone files. |
+| `preview.assets/` | Raster images and vector icons pulled out of the SVG, as standalone files (preview-only; `img-N.png` not matched to nodes). |
+| `images/` | Original-bytes rasters behind IMAGE fills, named `<imageHash>.<ext>`. Match a node's `fills[].imageHash` to the file. Present only when image fills are used. |
 
 **Read order:** `preview.html` (the goal) → `meta.json` (scale; if `truncated: true` the tree was capped and is incomplete) → `node.json` (structure).
 
@@ -32,6 +33,7 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 - **Layout — pick what the design *wants*, not what Figma used.** A 1-D row/stack is flex; a repeating 2-D arrangement (card gallery, equal columns) is `grid` — even if the designer built it with nested auto-layout or absolute positioning. Reserve `position: absolute` for genuine overlaps (badge on avatar); rebuild the rest as flex/grid so it stays responsive.
 - **Components & variants.** One component **set** → one reusable component; variant axes → props (or a design-system component's existing props). Repeated instances of the same master → **reuse** one component, don't inline each copy.
 - **Icons.** Icon nodes are `VECTOR`/`BOOLEAN_OPERATION` or icon `INSTANCE`s; the node `name` is the icon name. **Prefer a matching library icon** (`lucide`, `@heroicons`, a local set) over the `preview.assets/` SVG — it keeps the project's sizing/`currentColor`/theming. Fall back to the extracted SVG only for a custom/branded glyph.
+- **Images.** A node with an `IMAGE` fill carries `fills[].imageHash`; the real asset is `images/<imageHash>.<ext>` (original bytes). Use that file — don't reach for the `preview.assets/img-N.png`, which are preview-only copies not tied to any node. Copy it into the project's asset dir and set object-fit from the fill's `scaleMode` (`FILL`→`cover`, `FIT`→`contain`). `VIDEO` fills aren't exported — flag those to the user.
 - **Design tokens.** `boundVariables` on a node means the value is bound to a Figma variable — its ids are opaque, so join them against `variables.json`'s `tokens[].id` to recover the token **name** (e.g. `color/primary/500`) and per-mode value. Prefer the project's matching token (CSS var, theme value) over the raw literal; multi-mode tokens (Light/Dark) map to your theme.
 
 ## Workflow
