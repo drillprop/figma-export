@@ -516,7 +516,12 @@ async function collectIcons(root: AnyNode): Promise<RawAsset[]> {
         seen.add(`icon:${key}`);
         try {
           const bytes = (await node.exportAsync({ format: "SVG" })) as Uint8Array;
-          assets.push({ name: uniqueName(slugName(name, "icon"), "svg"), bytes });
+          // Name `<name>.<key>.svg`: the readable name for humans, the trailing
+          // key segment for an exact node join (INSTANCE `mainComponentKey`, a
+          // component's key via figma-components.json, else the node id). Slug the
+          // parts separately so the key is never truncated.
+          const base = `${slugName(name, "icon")}.${slugName(key, "key")}`;
+          assets.push({ name: uniqueName(base, "svg"), bytes });
         } catch (err) {
           console.warn(`[figma-export] SVG icon export failed for "${name}":`, err);
         }
