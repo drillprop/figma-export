@@ -183,24 +183,34 @@ app.post("/sync", async (c) => {
       hasVariables: Boolean(payload.variables),
       variableCount: payload.variables?.tokens.length ?? 0,
       variableCollectionCount: payload.variables?.collections.length ?? 0,
+      imageAssetCount: payload.images?.length ?? 0,
       summary: payload.summary ?? null,
     };
 
     const hasRemoteMasters = (payload.remoteMasters?.length ?? 0) > 0;
     const hasVariables = Boolean(payload.variables);
+    const images = payload.images ?? [];
 
-    // preview.assets/: raster images pulled out of the SVG + vector icon SVGs.
-    if (assets.length > 0) {
+    // preview.assets/: rasters pulled out of the SVG + vector icon SVGs, plus the
+    // original-bytes images behind IMAGE fills (named by imageHash so node.json
+    // fills can be matched to the real file). One folder for every extracted file.
+    if (assets.length > 0 || images.length > 0) {
       const assetsDir = path.join(outDir, "preview.assets");
       await mkdir(assetsDir, { recursive: true });
-      await Promise.all(
-        assets.map((asset) =>
+      await Promise.all([
+        ...assets.map((asset) =>
           writeFile(
             path.join(assetsDir, slug(asset.name, "asset")),
             Buffer.from(asset.base64, "base64"),
           ),
         ),
-      );
+        ...images.map((image) =>
+          writeFile(
+            path.join(assetsDir, slug(image.name, "image")),
+            Buffer.from(image.base64, "base64"),
+          ),
+        ),
+      ]);
     }
 
     await Promise.all([

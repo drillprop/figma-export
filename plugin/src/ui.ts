@@ -29,6 +29,7 @@ type FromPlugin =
       svgBytes: Uint8Array | null;
       pngBytes: Uint8Array | null;
       icons: { name: string; bytes: Uint8Array }[];
+      images: { imageHash: string; name: string; bytes: Uint8Array }[];
     }
   | { type: "batch-progress"; index: number; total: number }
   | {
@@ -38,6 +39,7 @@ type FromPlugin =
       svgBytes: Uint8Array | null;
       pngBytes: Uint8Array | null;
       icons: { name: string; bytes: Uint8Array }[];
+      images: { imageHash: string; name: string; bytes: Uint8Array }[];
     }
   | { type: "batch-fail"; name: string; error: string }
   | { type: "batch-done" };
@@ -333,6 +335,13 @@ function techDetail(s: ExportSummary): HTMLElement {
     wrap.appendChild(section("Design tokens", badges));
   }
 
+  if (s.imageAssets && s.imageAssets > 0) {
+    const badges = el("div", { class: "chips" }, [
+      el("span", { class: "badge ok", text: `${s.imageAssets} files` }),
+    ]);
+    wrap.appendChild(section("Images", badges));
+  }
+
   if (s.textSamples.length) {
     const list = el("div", { class: "samples" });
     for (const t of s.textSamples) list.appendChild(el("div", { class: "sample", text: `“${t}”` }));
@@ -608,6 +617,7 @@ async function postPayload(
   svgBytes: Uint8Array | null,
   pngBytes: Uint8Array | null,
   icons: { name: string; bytes: Uint8Array }[],
+  images: { imageHash: string; name: string; bytes: Uint8Array }[],
 ): Promise<PostResult> {
   const assets: AssetFile[] = [];
 
@@ -626,6 +636,16 @@ async function postPayload(
     assets.push({ name: icon.name, base64: bytesToBase64(icon.bytes) });
   }
   if (assets.length) payload.assets = assets;
+
+  // Original-bytes images behind IMAGE fills, matchable to nodes by imageHash;
+  // written into preview.assets/ alongside the preview-only assets above.
+  if (images?.length) {
+    payload.images = images.map((img) => ({
+      imageHash: img.imageHash,
+      name: img.name,
+      base64: bytesToBase64(img.bytes),
+    }));
+  }
 
   const iconCount = assets.filter((a) => a.name.endsWith(".svg")).length;
   const imageCount = assets.length - iconCount;
@@ -747,7 +767,7 @@ window.onmessage = async (event: MessageEvent) => {
     return;
   }
   if (msg.type === "batch-item") {
-    const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons);
+    const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons, msg.images);
     const summary = msg.payload.summary;
     batchResults.push({
       name: msg.name,
@@ -775,7 +795,7 @@ window.onmessage = async (event: MessageEvent) => {
   }
   if (msg.type !== "result") return;
 
-  const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons);
+  const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons, msg.images);
   endExporting();
   if (result.ok) {
     clearErrors();
