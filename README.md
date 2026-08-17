@@ -57,7 +57,7 @@ and pick `plugin/manifest.json`.
      preview.svg          vector reference
      preview.png          raster reference
      preview.html         open this to view the SVG (centered, no padding)
-     preview.assets/      images pulled out of the SVG (see below)
+     preview.assets/      images + vector icons pulled out of the SVG (see below)
    ```
 
    **Previews.** Every export always writes all three previews — `preview.svg`,
@@ -68,7 +68,14 @@ and pick `plugin/manifest.json`.
    is opened as a plain `file://` or `<img>` ("secure static mode"),
    **`preview.html`** inlines the SVG (centered, with no page padding) so those
    images render — open that for the truest view. Pure-vector nodes produce no
-   assets.
+   raster assets.
+
+   **Icons.** Vector-only components/instances are also extracted to
+   `preview.assets/` as standalone SVGs, named `<name>.<key>.svg` — a readable
+   name plus the component's stable key. That trailing key gives an exact node
+   join: a `node.json` INSTANCE's `mainComponentKey` (or a component's key via
+   `figma-components.json`; else the node id) matches the icon file's key
+   segment. Deduped by key.
 
 **Design tokens.** `variables.json` is the file's full token catalog: every
 Figma **Variable** (colors, spacing, radii, etc.) in every local collection,

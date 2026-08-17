@@ -19,7 +19,7 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 | `meta.json` | Summary: node/text counts, node types, component tallies, truncation flags. |
 | `preview.html` | **Open this first** — the rendered design. Your visual target. |
 | `preview.svg` / `preview.png` | The raw preview (`preview.html` inlines the SVG so its images load). |
-| `preview.assets/` | Raster images and vector icons pulled out of the SVG, as standalone files. |
+| `preview.assets/` | Raster images and vector icons pulled out of the SVG, as standalone files. Icons are named `<name>.<key>.svg`; the trailing key matches an INSTANCE's `mainComponentKey` for an exact node join. |
 
 **Read order:** `preview.html` (the goal) → `meta.json` (scale; if `truncated: true` the tree was capped and is incomplete) → `node.json` (structure).
 
@@ -31,7 +31,7 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 
 - **Layout — pick what the design *wants*, not what Figma used.** A 1-D row/stack is flex; a repeating 2-D arrangement (card gallery, equal columns) is `grid` — even if the designer built it with nested auto-layout or absolute positioning. Reserve `position: absolute` for genuine overlaps (badge on avatar); rebuild the rest as flex/grid so it stays responsive.
 - **Components & variants.** One component **set** → one reusable component; variant axes → props (or a design-system component's existing props). Repeated instances of the same master → **reuse** one component, don't inline each copy.
-- **Icons.** Icon nodes are `VECTOR`/`BOOLEAN_OPERATION` or icon `INSTANCE`s; the node `name` is the icon name. **Prefer a matching library icon** (`lucide`, `@heroicons`, a local set) over the `preview.assets/` SVG — it keeps the project's sizing/`currentColor`/theming. Fall back to the extracted SVG only for a custom/branded glyph.
+- **Icons.** Icon nodes are `VECTOR`/`BOOLEAN_OPERATION` or icon `INSTANCE`s; the node `name` is the icon name. The extracted file is `preview.assets/<name>.<key>.svg`, and the `<key>` segment matches the node's `mainComponentKey` (instances) / component key (`figma-components.json`) for an exact match. **Prefer a matching library icon** (`lucide`, `@heroicons`, a local set) over the extracted SVG — it keeps the project's sizing/`currentColor`/theming. Fall back to the extracted SVG only for a custom/branded glyph.
 - **Design tokens.** `boundVariables` on a node means the value is bound to a Figma variable — its ids are opaque, so join them against `variables.json`'s `tokens[].id` to recover the token **name** (e.g. `color/primary/500`) and per-mode value. Prefer the project's matching token (CSS var, theme value) over the raw literal; multi-mode tokens (Light/Dark) map to your theme.
 
 ## Workflow
