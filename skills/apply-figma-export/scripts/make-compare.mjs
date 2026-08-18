@@ -3,19 +3,23 @@
 // your BUILD vs the DESIGN. Modes: Slider, Onion-skin, Blink, and Box-diff. The Box-diff overlay
 // is ON by default: the script auto-loads ./pairs.json (from box-diff.mjs) if it exists — no flag
 // needed. Point elsewhere with --boxes <path>, or --no-boxes to skip it. box-diff.mjs must have run
-// first to produce pairs.json (this script only takes the two PNGs). No install (Node built-ins).
-// Usage: node make-compare.mjs <build.png> <design.png> [out.html] [--boxes pairs.json] [--no-boxes]
+// first to produce pairs.json (this script only takes the two PNGs). Pass --strip <strip.png>
+// (from visual-diff --strip) to embed the colour-tagged build│design│diff strip for inspection.
+// No install (Node built-ins).
+// Usage: node make-compare.mjs <build.png> <design.png> [out.html] [--boxes pairs.json] [--no-boxes] [--strip strip.png]
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { extname } from "node:path";
 
 const argv = process.argv.slice(2);
-const bi = argv.indexOf("--boxes");
-const boxesArg = bi >= 0 ? argv[bi + 1] : null;         // explicit path, if given
+const flagVal = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
+const boxesArg = flagVal("--boxes");                    // explicit path, if given
+const stripArg = flagVal("--strip");                    // colour-tagged strip.png, if given
 const noBoxes = argv.includes("--no-boxes");
-const pos = argv.filter((a, i) => a !== "--boxes" && a !== "--no-boxes" && (bi < 0 || i !== bi + 1));
+const valIdx = new Set(["--boxes", "--strip"].map((f) => argv.indexOf(f) + 1).filter((i) => i > 0));
+const pos = argv.filter((a, i) => !a.startsWith("--") && !valIdx.has(i));
 const [buildPath, designPath, out = "compare.html"] = pos;
 if (!buildPath || !designPath) {
-  console.error("Usage: node make-compare.mjs <build.png> <design.png> [out.html] [--boxes pairs.json] [--no-boxes]");
+  console.error("Usage: node make-compare.mjs <build.png> <design.png> [out.html] [--boxes pairs.json] [--no-boxes] [--strip strip.png]");
   process.exit(2);
 }
 // Default ON: fall back to ./pairs.json when no path is given. An explicit --boxes that's missing is
@@ -26,6 +30,8 @@ if (boxesFile && !boxesArg && !existsSync(boxesFile)) console.warn(`note: no ./p
 const mime = (p) => ({ ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" }[extname(p).toLowerCase()] || "image/png");
 const dataURI = (p) => `data:${mime(p)};base64,${readFileSync(p).toString("base64")}`;
 const A = dataURI(buildPath), B = dataURI(designPath);
+if (stripArg && !existsSync(stripArg)) { console.error(`--strip ${stripArg} not found`); process.exit(2); }
+const S = stripArg && existsSync(stripArg) ? dataURI(stripArg) : null;
 // keep only the fields the overlay needs, to stay small
 const useBoxes = boxesFile && existsSync(boxesFile);
 const pairs = useBoxes ? JSON.parse(readFileSync(boxesFile, "utf8")).map((p) => ({ f: p.figma, d: p.dom, dx: p.dx, dy: p.dy, dw: p.dw, dh: p.dh })) : [];
@@ -51,6 +57,9 @@ writeFileSync(out, `<!doctype html>
   #boxes .ok{fill:none;stroke:#9ca3af}
   #boxes .bad{fill:none;stroke:#db2777}
   #boxes text{fill:#db2777;font:12px ui-sans-serif,sans-serif}
+  .strip{width:var(--w);margin:16px auto;background:#fff;box-shadow:0 2px 20px rgba(0,0,0,.2)}
+  .strip b{display:block;padding:8px 12px;background:#111827;color:#fff;font-weight:600}
+  .strip img{display:block;width:100%}
 </style></head><body>
 <div class="toolbar">
   <b>Build&nbsp;vs&nbsp;Design</b>
@@ -67,6 +76,7 @@ writeFileSync(out, `<!doctype html>
   <svg id="boxes" preserveAspectRatio="none"></svg>
   <div class="divider" id="divider"></div>
 </div>
+${S ? `<div class="strip"><b>Strip — build │ design │ diff</b><img src="${S}" alt="build | design | diff strip"></div>` : ""}
 <script>
 const PAIRS=${JSON.stringify(pairs)};
 const stage=document.getElementById('stage'),imgA=document.getElementById('imgA'),imgB=document.getElementById('imgB'),divider=document.getElementById('divider'),boxes=document.getElementById('boxes');
@@ -102,4 +112,4 @@ document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{document.quer
 if(imgA.naturalWidth)buildBoxes();else imgA.addEventListener('load',buildBoxes,{once:true});
 setScale();apply();
 </script></body></html>`);
-console.log(`wrote ${out}  (build=${buildPath}, design=${designPath}${useBoxes ? `, boxes=${boxesFile} [${pairs.length}]` : ""})`);
+console.log(`wrote ${out}  (build=${buildPath}, design=${designPath}${useBoxes ? `, boxes=${boxesFile} [${pairs.length}]` : ""}${S ? `, strip=${stripArg}` : ""})`);
