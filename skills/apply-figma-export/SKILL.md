@@ -49,16 +49,21 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 
 Confirm your rebuild against the export — you have vision, use it. **`box-diff` (layout) is the axis you can close to zero. The pixel-diff `%` is not** — matched web fonts rasterize differently than Figma's outlines, and browser `<img>` resampling differs from Figma's PNG, flooring the diff ~10%+ even when everything is correct. Judge appearance in `compare.html` (slider/blink), never the raw %. If asked for "pixel perfect", explain this limit *before* iterating.
 
-**Run the bundled scripts in `scripts/` — never hand-roll a `node -e` Playwright screenshot.** Each auto-installs its one dep on first run into `~/.cache/figma-export-visual-check` (project untouched; `FIGMA_EXPORT_NO_INSTALL=1` to opt out). Run in order — each writes what the next loads. From the build's dev-server URL (or a static `build.html`; a presentational render with no client handlers is enough) and the design's frame width (`node.json` root `absoluteBoundingBox.width`):
+**Run `review.mjs` — the whole check in one command, so no step (box-diff especially) gets skipped.** From the build's dev-server URL (or a static `build.html`; a presentational render with no client handlers is enough):
 
-1. **`capture`** — `node scripts/capture.mjs build <build-url>` + `node scripts/capture.mjs design <bundle>/preview.html` → `build.png` + `design.png`. Scrollbar hidden, so no 15px column shift.
-2. **`box-diff`** — `node scripts/box-diff.mjs <build-url> <bundle>/node.json` → Δx/Δy/Δw/Δh + `pairs.json`. Layout only; emit `data-fig-id="<node id>"` on build elements for exact pairing. Big `Δw` on text is **expected** (Figma text is fixed-width, HTML shrink-wraps) — match a line-break with `max-width` only when it matters visually.
-3. **`visual-diff`** — `node scripts/visual-diff.mjs build.png design.png diff.png`. Read the map, not the %. Add `--strip out.png` to also write **one Read-able `build │ design │ diff` PNG** — each panel headed by a colour bar (blue/amber/red, that fixed order), the artifact *you* look at with vision (`--stack` for a column). Prefer this over building a montage by hand.
-4. **`make-compare`** — `node scripts/make-compare.mjs build.png design.png` → `compare.html`, the artifact a *human* opens.
+```
+node scripts/review.mjs <build-url|build.html> <bundle-dir>
+```
 
-**Judging a region** (type, a button, one section): capture the same region on each side — build by `--selector "<css>" --scale 2`, design by `--clip x y w h` (the node's box from `node.json`) — then `visual-diff a.png b.png d.png --strip s.png` and Read the strip. One flow, no hand-cropping needed.
+It runs, in order, capture (build + design) → box-diff → visual-diff `--strip` → make-compare, writes every artifact next to the bundle (`build/design/diff/strip.png`, `pairs.json`, `compare.html`), and **exits non-zero while box-diff is past tolerance** — so a build isn't done until review passes, and "matches closely" is *measured*, not eyeballed. Deps auto-install on first run into `~/.cache` (project untouched; `FIGMA_EXPORT_NO_INSTALL=1` to opt out); frame width defaults to the design's (`node.json` root `absoluteBoundingBox.width`). **Never hand-roll a `node -e` screenshot.**
 
-**Fix loop:** each `box-diff` Δ past tolerance is a placement bug — edit, re-run, repeat until only expected differences remain. Appearance is a human's call — open `compare.html`, don't chase the %.
+- Emit `data-fig-id="<node id>"` on build elements for exact box-diff pairing.
+- Big `Δw` on text is **expected** (Figma is fixed-width, HTML shrink-wraps) — match a line-break with `max-width` only when it matters.
+- Read `strip.png` (colour-tagged `build │ design │ diff`) yourself; `compare.html` (slider/blink) is what a *human* opens.
+
+**Judging a region** (type, a button, one section): capture the same region on each side — build by `capture build <url> out.png --selector "<css>" --scale 2`, design by `capture design <preview.html> out.png --clip x y w h` (the node's box from `node.json`) — then `visual-diff a.png b.png d.png --strip s.png` and Read the strip.
+
+**Fix loop:** each `box-diff` Δ past tolerance is a placement bug — edit, **re-run `review.mjs` until it exits 0**. Appearance is a human's call — open `compare.html`, don't chase the %.
 
 ## Related: Figma's own MCP server
 
