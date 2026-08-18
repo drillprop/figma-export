@@ -57,7 +57,7 @@ and pick `plugin/manifest.json`.
      preview.svg          vector reference
      preview.png          raster reference
      preview.html         open this to view the SVG (centered, no padding)
-     preview.assets/      images + vector icons pulled out of the SVG (see below)
+     preview.assets/      SVG preview images, vector icons, + original IMAGE-fill files by hash (see below)
    ```
 
    **Previews.** Every export always writes all three previews — `preview.svg`,
@@ -76,6 +76,14 @@ and pick `plugin/manifest.json`.
    join: a `node.json` INSTANCE's `mainComponentKey` (or a component's key via
    `figma-components.json`; else the node id) matches the icon file's key
    segment. Deduped by key.
+
+**Images.** Raster images behind `IMAGE` fills are exported at their *original*
+bytes into `preview.assets/`, each named by its Figma image hash
+(`<imageHash>.<ext>`). To place an image, read a node's `fills[].imageHash` in
+`node.json` and load `preview.assets/<imageHash>.<ext>` — the join is exact. (The
+`img-N.png` in the same folder are lower-fidelity copies pulled out of the SVG
+*for the preview only* and not matched to nodes.) Written only when the export
+uses image fills.
 
 **Design tokens.** `variables.json` is the file's full token catalog: every
 Figma **Variable** (colors, spacing, radii, etc.) in every local collection,

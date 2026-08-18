@@ -98,6 +98,9 @@ export interface ExportSummary {
   /** Count of design tokens + collections resolved from Figma Variables, when any
    * were referenced. Absent when the selection uses no variables. */
   variables?: { collections: number; tokens: number };
+  /** Count of original-bytes images exported to preview.assets/ (one per distinct
+   * image fill). Absent when the export uses no image fills. */
+  imageAssets?: number;
   truncated: boolean;
   truncatedAt: number | null;
   /** Every export now writes preview.svg + preview.png + preview.html. `svg`/`png`
@@ -135,6 +138,24 @@ export interface ExportPayload {
   /** Files written to preview.assets/: raster images pulled out of the SVG
    * (referenced back from it) and vector icon components (as standalone SVGs). */
   assets?: AssetFile[];
+  /** Original-bytes raster images behind IMAGE fills, written to preview.assets/
+   * alongside `assets`. Unlike the SVG-rasterized preview rasters, these are
+   * matchable to nodes via `imageHash`. Absent when the export uses no image
+   * fills. */
+  images?: ImageAsset[];
+}
+
+/** One raster image behind an IMAGE fill, exported at its original bytes (not the
+ * SVG-rasterized preview copy) so it can be matched back to the nodes that use
+ * it: join `node.json` fills' `imageHash` against this `imageHash`. Written to
+ * preview.assets/<name>, alongside the preview rasters/icons. */
+export interface ImageAsset {
+  /** The Figma image hash — the same value carried on each IMAGE fill. */
+  imageHash: string;
+  /** File name written under preview.assets/, e.g. "<imageHash>.png". */
+  name: string;
+  /** The image bytes, base64-encoded. */
+  base64: string;
 }
 
 /** One file in preview.assets/. Kind is carried by the name's extension

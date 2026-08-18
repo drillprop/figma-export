@@ -538,6 +538,73 @@ async function collectIcons(root: AnyNode): Promise<RawAsset[]> {
   return assets;
 }
 
+// --- image fills --------------------------------------------------------
+// Every IMAGE fill carries an `imageHash`. This exports each distinct image at
+// its *original* bytes (via getImageByHash), named by that hash, so a rebuilt
+// page can join a node's fill hash -> the actual file. These land in
+// preview.assets/ next to the SVG-rasterized `img-N.png` (preview-only, unnamed).
+
+/** A raster image behind an IMAGE fill, keyed by its Figma image hash. */
+interface RawImage {
+  imageHash: string;
+  name: string;
+  bytes: Uint8Array;
+}
+
+/** Sniff a raster's container from its magic bytes for the file extension. */
+function imageExt(bytes: Uint8Array): string {
+  if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50) return "png";
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8) return "jpg";
+  if (bytes.length >= 3 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return "gif";
+  if (
+    bytes.length >= 12 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) {
+    return "webp";
+  }
+  return "png";
+}
+
+/** Gather every distinct visible IMAGE fill under the node and export its
+ * original bytes, so each maps back to nodes by `imageHash`. Invisible subtrees
+ * and hidden fills are skipped (they don't render). Deduped by hash. */
+async function collectImages(root: AnyNode): Promise<RawImage[]> {
+  const hashes = new Set<string>();
+
+  const walk = (node: AnyNode): void => {
+    if (!node || node.visible === false) return;
+    const fills = tryRead(node, "fills");
+    if (Array.isArray(fills)) {
+      for (const fill of fills) {
+        if (
+          fill &&
+          fill.type === "IMAGE" &&
+          fill.visible !== false &&
+          typeof fill.imageHash === "string"
+        ) {
+          hashes.add(fill.imageHash);
+        }
+      }
+    }
+    if (Array.isArray(node.children)) for (const child of node.children) walk(child);
+  };
+  walk(root);
+
+  const images: RawImage[] = [];
+  for (const hash of hashes) {
+    if (images.length >= MAX_ASSETS) break;
+    try {
+      const image = figma.getImageByHash(hash);
+      if (!image) continue;
+      const bytes = (await image.getBytesAsync()) as Uint8Array;
+      images.push({ imageHash: hash, name: `${slugName(hash, "image")}.${imageExt(bytes)}`, bytes });
+    } catch (err) {
+      console.warn(`[figma-export] image export failed for ${hash}:`, err);
+    }
+  }
+  return images;
+}
+
 /** Build a human/AI-readable summary of what an export contains. */
 function summarize(
   node: SerializedNode,
@@ -626,6 +693,7 @@ interface NodeExport {
   svgBytes: Uint8Array | null;
   pngBytes: Uint8Array | null;
   icons: RawAsset[];
+  images: RawImage[];
 }
 
 /** Serialize one node, gather its components, render its preview/icons, and
@@ -676,10 +744,14 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
   }
 
   let icons: RawAsset[] = [];
+  let images: RawImage[] = [];
   if ("exportAsync" in target) {
     figma.ui.postMessage({ type: "progress", message: "Extracting icons…" });
     icons = await collectIcons(target);
     console.log(`[figma-export] extracted ${icons.length} icon(s)`);
+    figma.ui.postMessage({ type: "progress", message: "Exporting images…" });
+    images = await collectImages(target);
+    console.log(`[figma-export] exported ${images.length} image(s)`);
   }
 
   figma.ui.postMessage({ type: "progress", message: "Resolving design tokens…" });
@@ -700,6 +772,7 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
       tokens: variables.tokens.length,
     };
   }
+  if (images.length > 0) summary.imageAssets = images.length;
 
   const payload: ExportPayload = {
     outputDir: msg.outputDir,
@@ -715,7 +788,7 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
     ...(variables ? { variables } : {}),
   };
 
-  return { payload, svgBytes, pngBytes, icons };
+  return { payload, svgBytes, pngBytes, icons, images };
 }
 
 /** A short, path-safe suffix derived from a node id, to disambiguate colliding
@@ -796,6 +869,7 @@ async function handleExport(msg: ExportMessage): Promise<void> {
       svgBytes: out.svgBytes,
       pngBytes: out.pngBytes,
       icons: out.icons,
+      images: out.images,
     });
     return;
   }
@@ -822,6 +896,7 @@ async function handleExport(msg: ExportMessage): Promise<void> {
         svgBytes: out.svgBytes,
         pngBytes: out.pngBytes,
         icons: out.icons,
+        images: out.images,
       });
       await waitForBatchAck();
     } catch (err) {
