@@ -43,7 +43,7 @@ run("1/4 capture build", "capture.mjs", ["build", buildTarget, p("build.png"), "
 run("2/4 capture design", "capture.mjs", ["design", previewHtml, p("design.png"), "--width", width]);
 run("3/4 box-diff (layout)", "box-diff.mjs", [buildTarget, nodeJson, "--width", width, "--tol", String(tol), "--out", p("pairs.json")]);
 run("4/4 visual-diff + strip", "visual-diff.mjs", [p("build.png"), p("design.png"), p("diff.png"), "--strip", p("strip.png"), ...stack]);
-run("    make-compare", "make-compare.mjs", [p("build.png"), p("design.png"), p("compare.html"), "--boxes", p("pairs.json"), "--strip", p("strip.png")]);
+run("    make-compare", "make-compare.mjs", [p("build.png"), p("design.png"), p("compare.html"), "--boxes", p("pairs.json")]);
 
 // ---- gate on box-diff: the layout axis must be within tolerance to pass ----
 const pairs = JSON.parse(readFileSync(p("pairs.json"), "utf8"));

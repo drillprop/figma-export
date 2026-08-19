@@ -47,7 +47,7 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 
 ## Visual check
 
-Confirm your rebuild against the export — you have vision, use it. **Close `box-diff` (layout) to zero; never gate on the pixel-diff `%`** — matched web fonts rasterize differently than Figma's outlines and browser `<img>` resampling differs from Figma's PNG, flooring the *number* ~10%+ even when correct, so it never reaches 0. But **do read the diff/strip *image*** — box-diff is blind to appearance, so wrong crop, missing overlay, or off colour show up only there. Judge those in `compare.html` (slider/blink/strip). If asked for "pixel perfect", explain this limit *before* iterating.
+Confirm your rebuild against the export — you have vision, use it. **`box-diff` (layout) is the axis you can close to zero. The pixel-diff `%` is not** — matched web fonts rasterize differently than Figma's outlines, and browser `<img>` resampling differs from Figma's PNG, flooring the diff ~10%+ even when everything is correct. Judge appearance in `compare.html` (slider/blink), never the raw %. If asked for "pixel perfect", explain this limit *before* iterating.
 
 **Run `review.mjs` — the whole check in one command, so no step (box-diff especially) gets skipped.** From the build's dev-server URL (or a static `build.html`; a presentational render with no client handlers is enough):
 
@@ -55,15 +55,15 @@ Confirm your rebuild against the export — you have vision, use it. **Close `bo
 node scripts/review.mjs <build-url|build.html> <bundle-dir>
 ```
 
-It runs capture (build + design) → box-diff → visual-diff `--strip` → make-compare, writes every artifact next to the bundle (`build/design/diff/strip.png`, `pairs.json`, `compare.html`), and **exits non-zero while box-diff is past tolerance**. Deps auto-install on first run into `~/.cache` (project untouched; `FIGMA_EXPORT_NO_INSTALL=1` to opt out); frame width defaults to the design's (`node.json` root `absoluteBoundingBox.width`). **Never hand-roll a `node -e` screenshot.**
+It runs, in order, capture (build + design) → box-diff → visual-diff `--strip` → make-compare, writes every artifact next to the bundle (`build/design/diff/strip.png`, `pairs.json`, `compare.html`), and **exits non-zero while box-diff is past tolerance** — so a build isn't done until review passes, and "matches closely" is *measured*, not eyeballed. Deps auto-install on first run into `~/.cache` (project untouched; `FIGMA_EXPORT_NO_INSTALL=1` to opt out); frame width defaults to the design's (`node.json` root `absoluteBoundingBox.width`). **Never hand-roll a `node -e` screenshot.**
 
-- **`data-fig-id="<node id>"` is mandatory** on every build element box-diff should pair — without it box-diff falls back to a positional heuristic whose false positives you'll wrongly wave off as noise, so the review never really passes.
+- Emit `data-fig-id="<node id>"` on build elements for exact box-diff pairing.
 - Big `Δw` on text is **expected** (Figma is fixed-width, HTML shrink-wraps) — match a line-break with `max-width` only when it matters.
-- Read `strip.png` (colour-tagged `build │ design │ diff`) and `compare.html` (slider/blink/box-diff overlay, strip embedded) **yourself, every pass** — they're your appearance check while you iterate, not just the human's final view.
+- Read `strip.png` (colour-tagged `build │ design │ diff`) yourself; `compare.html` (slider/blink) is what a *human* opens.
 
 **Judging a region** (type, a button, one section): capture the same region on each side — build by `capture build <url> out.png --selector "<css>" --scale 2`, design by `capture design <preview.html> out.png --clip x y w h` (the node's box from `node.json`) — then `visual-diff a.png b.png d.png --strip s.png` and Read the strip.
 
-**Fix loop:** each `box-diff` Δ past tolerance is a placement bug — edit, **re-run `review.mjs` until it exits 0**, reading `strip.png`/`compare.html` each pass. **Never declare done from a downscaled full-page capture** — that resolution hides real discrepancies; verify each section at `--scale 2` (region capture above). Only once geometry is zeroed *and* you've signed off on appearance yourself do you hand off — tell the user it's complete and point them at the build URL **and** `compare.html` for a final check.
+**Fix loop:** each `box-diff` Δ past tolerance is a placement bug — edit, **re-run `review.mjs` until it exits 0**. Appearance is a human's call — open `compare.html`, don't chase the %.
 
 ## Related: Figma's own MCP server
 
