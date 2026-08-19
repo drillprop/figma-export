@@ -38,18 +38,32 @@ its value is the spacing of the frame where their two branches meet, *not* any s
 number on some ancestor. Collapsing a nested stack into one flat list is the classic error:
 you end up crediting a gap to a grandparent frame that never lays those two nodes out.
 
-Then **confirm the value against `absoluteBoundingBox` geometry** —
-`next.absoluteBoundingBox.y − (prev.absoluteBoundingBox.y + prev.height)` (use `x`/`width` for
-a row). Geometry is decisive because a stored `itemSpacing`/`padding*` is *authored* and can be
-a phantom: a frame with **one child** reports an `itemSpacing` that never renders, and
-`SPACE_BETWEEN`, `layoutGrow`, fixed / `HUG` heights, and `layoutPositioning: ABSOLUTE` children
-all detach the stored gap from the rendered one. When the stored field and the geometry
-disagree, trust the geometry.
+Then **reconcile the value with `absoluteBoundingBox` geometry** —
+`next.absoluteBoundingBox.y − (prev.absoluteBoundingBox.y + prev.height)` (use `x`/`width` for a
+row). The two measure different things: the stored field is the *intended layout* gap; the box
+delta is the *rendered* spacing. They diverge when the stored field is a **phantom** — a
+one-child frame reports an `itemSpacing` that never renders; `SPACE_BETWEEN`, `layoutGrow`, and
+fixed / `HUG` heights detach it from the rendered gap — and there geometry wins. But they also
+diverge when the box delta itself is inflated by an outside stroke or a drop-shadow/blur
+(`absoluteBoundingBox` includes stroke geometry), and there the authored gap is the truer CSS
+target. So don't blindly trust either: understand *why* they differ before picking.
 
-Ordering caveat for "adjacent": inside an auto-layout frame (`HORIZONTAL`/`VERTICAL`), the
-`children` array *is* the visual order along the primary axis, so array order is reliable. Inside
-a `layoutMode: NONE` frame the array is only **z-order** (paint stacking), so sort children by
-`absoluteBoundingBox` before deciding which two are neighbours.
+**Only compute a gap between in-flow siblings of an auto-layout parent.** The box-subtraction
+assumes children tile along one axis without overlapping — which is false for out-of-flow nodes,
+and there it fabricates a bogus (often negative) "gap":
+
+- **`layoutMode: NONE` frame** — children are freely positioned and z-ordered; they routinely
+  overlap (a full-bleed background behind a content frame). There is no gap to read at all —
+  reconstruct with positioning/inset (see the skill's "reserve `position: absolute` for genuine
+  overlaps"), not `gap`.
+- **`layoutPositioning: ABSOLUTE` child** inside an auto-layout frame — pulled out of flow, it
+  overlaps its flow siblings; skip it when reading gaps (auto-layout's own `itemSpacing` already
+  ignores it).
+
+So: bail out of gap-reading on a `NONE` frame, filter out `ABSOLUTE` children, and only then —
+for the remaining in-flow children, whose array order already *is* the primary-axis order — read
+the gap between neighbours. If two boxes you expected to tile actually overlap, that's the signal
+they're an overlay, not a stack.
 
 ## Style fields
 
