@@ -37,24 +37,17 @@ One export lives at `<out>/<fileKey>/<node-name>/`:
 
 ## Workflow
 
-Two phases: **prototype to pixel-parity, then port to your stack** — this splits *matching the pixels* (mechanical, auto-verified) from *fitting the house style* (judgment). One small component? Skip the prototype — build it directly in-stack and [visual-check](#visual-check).
-
-**A — Prototype: a throwaway vanilla HTML/CSS file that mirrors `node.json` 1:1.**
-
-1. **Scope + see the target.** Find the `node.json`; read `meta.json` for scale + `truncated`. Open `preview.html` — match a real design, not JSON.
-2. **Extract the spec in one pass** (not in waves — that's three re-do passes): per **TEXT** node (family/style/weight/size/lineHeight/letterSpacing/case — CTA labels often differ from body); per **frame** (w×h, padding, `itemSpacing`→gap, `cornerRadius`, fills — button height/gap/icon-size live in the frame's box + `itemSpacing`, not the text); per **section** (padding, gaps).
-3. **Build outermost-in** — one element per node, `data-fig-id="<id>"` on each, absolute layout, no reuse. Ugly is fine; mirroring 1:1 is *why* box-diff pairs every node exactly.
-4. **Review to zero.** Run [`review.mjs`](#visual-check) until it exits 0, reading `strip.png`/`compare.html` each pass. This file is now your pixel-verified target for phase B.
-
-**B — Port: reimplement the verified prototype in the project's stack.**
-
-5. **Learn the house style + audit the render environment.** How *this* project builds UI — component library, **icon set**, styling, token/theme source, folder conventions (a shared `ui`/design-system package often owns the real components). Audit base CSS before spacing: root `font-size` ≠ 16px scales every `rem`; an unscoped element rule (`h1{}`, `img{}`) can outrank utilities/scoped styles and silently drop them (Tailwind v4: keep resets in `@layer base`). **Systemic CSS bugs masquerade as a dozen per-section offsets — find the one cause first.**
-6. **Reimplement**, now applying the judgment the 1:1 prototype deferred — grid vs flex, reuse components, real tokens/library icons, responsive (see [How nodes map to code](#how-nodes-map-to-code)).
-7. **Re-review against the prototype** until parity — capture the stack build, `visual-diff` it against the prototype, read the strip each pass. Fidelity leaks here if unchecked.
+1. **Locate & scope.** Find the `node.json` the user means; read `meta.json` for scale and `truncated`.
+2. **See the target.** Open `preview.html` (or `preview.png`) — match a real design, not JSON.
+3. **Learn the house style *and* audit the render environment.** Two things, both before writing code:
+   - **House style** — how *this* project builds UI: component library, **icon set**, styling approach, token/theme source, folder conventions. Search the whole workspace (a shared `ui`/design-system package often owns the real components). Match it — the export is data, not a style mandate.
+   - **Render environment** — audit base CSS before any spacing. Root `font-size`: if it isn't 16px, every `rem`-based length is scaled (a starter's `html{font-size:18px}` makes `rem` spacing 12.5% too big — e.g. Tailwind's whole scale). Check how the project's global/reset styles rank against the styles you'll write: an unscoped element rule (`h1{}`, `img{}`) can outrank utilities or scoped styles and silently drop them (in Tailwind v4, keep resets in `@layer base` so utilities win). **Systemic CSS bugs masquerade as a dozen small per-section offsets — find the one cause before pixel-tuning.**
+4. **Extract the full spec in one pass** (not in waves — that's three re-do passes). One table before coding: per **TEXT** node (family/style/weight/size/lineHeight/letterSpacing/case — CTA labels often use a *different* font/weight than body); per **component/instance frame** (w×h, padding, `itemSpacing`→gap, `cornerRadius`, fills — button height/gap/icon-size live in the **frame's** `absoluteBoundingBox`+`itemSpacing`, not the text node); per **section** (padding, gaps). Map each master in `figma-components.json` to one reusable component; variant axes → props.
+5. **Build outermost-in, verifying each section as you go.** Translate the root container then children (see [`reference/mapping.md`](reference/mapping.md)). Run the [visual check](#visual-check) per section — don't build the whole page blind and check once at the end.
 
 ## Visual check
 
-Confirm your rebuild against the export — you have vision, use it. **Close `box-diff` (layout) to zero; never gate on the pixel-diff `%`** — matched web fonts rasterize differently than Figma's outlines and browser `<img>` resampling differs from Figma's PNG, flooring the *number* ~10%+ even when correct, so it never reaches 0. But **do read the diff/strip *image*** — box-diff is blind to appearance, so wrong crop, missing overlay, or off colour show up only there. Judge those in `compare.html` (slider/blink/strip). If asked for "pixel perfect", explain this limit *before* iterating.
+Confirm your rebuild against the export — you have vision, use it. **`box-diff` (layout) is the axis you can close to zero. The pixel-diff `%` is not** — matched web fonts rasterize differently than Figma's outlines, and browser `<img>` resampling differs from Figma's PNG, flooring the diff ~10%+ even when everything is correct. Judge appearance in `compare.html` (slider/blink), never the raw %. If asked for "pixel perfect", explain this limit *before* iterating.
 
 **Run `review.mjs` — the whole check in one command, so no step (box-diff especially) gets skipped.** From the build's dev-server URL (or a static `build.html`; a presentational render with no client handlers is enough):
 
@@ -62,15 +55,15 @@ Confirm your rebuild against the export — you have vision, use it. **Close `bo
 node scripts/review.mjs <build-url|build.html> <bundle-dir>
 ```
 
-It runs capture (build + design) → box-diff → visual-diff `--strip` → make-compare, writes every artifact next to the bundle (`build/design/diff/strip.png`, `pairs.json`, `compare.html`), and **exits non-zero while box-diff is past tolerance**. Deps auto-install on first run into `~/.cache` (project untouched; `FIGMA_EXPORT_NO_INSTALL=1` to opt out); frame width defaults to the design's (`node.json` root `absoluteBoundingBox.width`). **Never hand-roll a `node -e` screenshot.**
+It runs, in order, capture (build + design) → box-diff → visual-diff `--strip` → make-compare, writes every artifact next to the bundle (`build/design/diff/strip.png`, `pairs.json`, `compare.html`), and **exits non-zero while box-diff is past tolerance** — so a build isn't done until review passes, and "matches closely" is *measured*, not eyeballed. Deps auto-install on first run into `~/.cache` (project untouched; `FIGMA_EXPORT_NO_INSTALL=1` to opt out); frame width defaults to the design's (`node.json` root `absoluteBoundingBox.width`). **Never hand-roll a `node -e` screenshot.**
 
-- **`data-fig-id="<node id>"` is what makes box-diff pair exactly** — phase-A's 1:1 prototype puts it on every node by construction; without it box-diff falls back to a positional heuristic whose false positives you'll wrongly wave off as noise, so the review never really passes. (Phase B compares appearance vs the prototype, so it needs none.)
+- Emit `data-fig-id="<node id>"` on build elements for exact box-diff pairing.
 - Big `Δw` on text is **expected** (Figma is fixed-width, HTML shrink-wraps) — match a line-break with `max-width` only when it matters.
-- Read `strip.png` (colour-tagged `build │ design │ diff`) and `compare.html` (slider/blink/box-diff overlay, strip embedded) **yourself, every pass** — they're your appearance check while you iterate, not just the human's final view.
+- Read `strip.png` (colour-tagged `build │ design │ diff`) yourself; `compare.html` (slider/blink) is what a *human* opens.
 
 **Judging a region** (type, a button, one section): capture the same region on each side — build by `capture build <url> out.png --selector "<css>" --scale 2`, design by `capture design <preview.html> out.png --clip x y w h` (the node's box from `node.json`) — then `visual-diff a.png b.png d.png --strip s.png` and Read the strip.
 
-**Fix loop:** each `box-diff` Δ past tolerance is a placement bug — edit, **re-run `review.mjs` until it exits 0**, reading `strip.png`/`compare.html` each pass. **Never declare done from a downscaled full-page capture** — that resolution hides real discrepancies; verify each section at `--scale 2` (region capture above). Only once geometry is zeroed *and* you've signed off on appearance yourself do you hand off — tell the user it's complete and point them at the build URL **and** `compare.html` for a final check.
+**Fix loop:** each `box-diff` Δ past tolerance is a placement bug — edit, **re-run `review.mjs` until it exits 0**. Appearance is a human's call — open `compare.html`, don't chase the %.
 
 ## Related: Figma's own MCP server
 
