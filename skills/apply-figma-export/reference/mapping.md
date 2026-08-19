@@ -30,15 +30,26 @@ genuine overlaps); rebuild simple frames as flex/grid so they stay responsive. F
 | `paddingTop/Right/Bottom/Left` | `padding` (px) |
 | `layoutWrap: WRAP` | `flex-wrap: wrap` |
 
-**Read spacing from geometry, not just the stored field.** `itemSpacing` and `padding*` are
-*authored* values that can diverge from what actually renders. Traps that silently break them:
-a frame with **one child** still reports an `itemSpacing` that never applies; `SPACE_BETWEEN`,
-`layoutGrow`, fixed / `HUG` heights, and `layoutPositioning: ABSOLUTE` children all detach the
-stored gap from the rendered gap too. To get the true gap between two adjacent nodes, subtract
-their bounding boxes — `next.absoluteBoundingBox.y − (prev.absoluteBoundingBox.y + prev.height)`
-(use `x`/`width` for a row) — and confirm you're crediting the gap to the frame whose **direct**
-children border it, not a grandparent one level up. When the stored field and the geometry
+**A gap belongs to two nodes that are *direct siblings under one parent* — read it from
+their relationship, don't flatten the tree.** Before quoting any gap: (1) identify the two
+nodes that actually border the boundary; (2) check whether they share a *direct* parent. If
+they don't — one is nested a level deeper — the space between them is a **group seam**, and
+its value is the spacing of the frame where their two branches meet, *not* any single stored
+number on some ancestor. Collapsing a nested stack into one flat list is the classic error:
+you end up crediting a gap to a grandparent frame that never lays those two nodes out.
+
+Then **confirm the value against `absoluteBoundingBox` geometry** —
+`next.absoluteBoundingBox.y − (prev.absoluteBoundingBox.y + prev.height)` (use `x`/`width` for
+a row). Geometry is decisive because a stored `itemSpacing`/`padding*` is *authored* and can be
+a phantom: a frame with **one child** reports an `itemSpacing` that never renders, and
+`SPACE_BETWEEN`, `layoutGrow`, fixed / `HUG` heights, and `layoutPositioning: ABSOLUTE` children
+all detach the stored gap from the rendered one. When the stored field and the geometry
 disagree, trust the geometry.
+
+Ordering caveat for "adjacent": inside an auto-layout frame (`HORIZONTAL`/`VERTICAL`), the
+`children` array *is* the visual order along the primary axis, so array order is reliable. Inside
+a `layoutMode: NONE` frame the array is only **z-order** (paint stacking), so sort children by
+`absoluteBoundingBox` before deciding which two are neighbours.
 
 ## Style fields
 
