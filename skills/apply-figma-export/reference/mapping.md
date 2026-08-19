@@ -30,6 +30,16 @@ genuine overlaps); rebuild simple frames as flex/grid so they stay responsive. F
 | `paddingTop/Right/Bottom/Left` | `padding` (px) |
 | `layoutWrap: WRAP` | `flex-wrap: wrap` |
 
+**Read spacing from geometry, not just the stored field.** `itemSpacing` and `padding*` are
+*authored* values that can diverge from what actually renders. Traps that silently break them:
+a frame with **one child** still reports an `itemSpacing` that never applies; `SPACE_BETWEEN`,
+`layoutGrow`, fixed / `HUG` heights, and `layoutPositioning: ABSOLUTE` children all detach the
+stored gap from the rendered gap too. To get the true gap between two adjacent nodes, subtract
+their bounding boxes — `next.absoluteBoundingBox.y − (prev.absoluteBoundingBox.y + prev.height)`
+(use `x`/`width` for a row) — and confirm you're crediting the gap to the frame whose **direct**
+children border it, not a grandparent one level up. When the stored field and the geometry
+disagree, trust the geometry.
+
 ## Style fields
 
 | Figma | CSS |
