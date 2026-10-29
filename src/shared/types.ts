@@ -33,8 +33,58 @@ export interface SerializedNode {
   name: string;
   type: string;
   truncated?: boolean;
+  /** TEXT nodes only, when `textStyleId` or `fillStyleId` is "MIXED". */
+  styledTextSegments?: StyledTextRun[];
   children?: SerializedNode[];
   [key: string]: unknown;
+}
+
+/** A run of a TEXT node's characters sharing one text style and fill style.
+ * `start` is inclusive, `end` exclusive. An absent id means no style. */
+export interface StyledTextRun {
+  characters: string;
+  start: number;
+  end: number;
+  textStyleId?: string;
+  fillStyleId?: string;
+}
+
+/** The text properties a Figma text style applies (shapes follow the Figma typings). */
+export interface TextStyleProps {
+  fontName: { family: string; style: string };
+  fontSize: number;
+  lineHeight: { unit: "AUTO" } | { value: number; unit: "PIXELS" | "PERCENT" };
+  letterSpacing: { value: number; unit: "PIXELS" | "PERCENT" };
+  /** e.g. "ORIGINAL" | "UPPER" | "LOWER" | "TITLE". */
+  textCase: string;
+  /** e.g. "NONE" | "UNDERLINE" | "STRIKETHROUGH". */
+  textDecoration: string;
+  paragraphSpacing: number;
+  paragraphIndent: number;
+}
+
+/** A Figma named style. A node's `fillStyleId` / `strokeStyleId` / `textStyleId` /
+ * `effectStyleId` / `gridStyleId` in node.json join against `id`. */
+export type DesignStyle = {
+  id: string;
+  key: string | null;
+  /** Style name, slash-grouped by folder, e.g. "HD/H1" or "Dark Steel". */
+  name: string;
+  remote: boolean;
+  description: string;
+  /** Variable aliases bound to the style's fields; join against variables.json. */
+  boundVariables?: Record<string, unknown>;
+} & (
+  | { type: "PAINT"; paints: unknown[] }
+  | { type: "TEXT"; text: TextStyleProps }
+  | { type: "EFFECT"; effects: unknown[] }
+  | { type: "GRID"; layoutGrids: unknown[] }
+);
+
+/** styles.json: every local style in the file plus any library style the export
+ * references. */
+export interface StylesExport {
+  styles: DesignStyle[];
 }
 
 /** A design token's value for one mode. Primitives pass through; colors become
@@ -98,6 +148,8 @@ export interface ExportSummary {
   /** Count of design tokens + collections resolved from Figma Variables, when any
    * were referenced. Absent when the selection uses no variables. */
   variables?: { collections: number; tokens: number };
+  /** Count of named styles per type. Absent when the file has no styles. */
+  styles?: { paint: number; text: number; effect: number; grid: number };
   /** Count of original-bytes images exported to preview.assets/ (one per distinct
    * image fill). Absent when the export uses no image fills. */
   imageAssets?: number;
@@ -129,6 +181,9 @@ export interface ExportPayload {
   /** The file's design tokens (Figma Variables) as a full catalog, resolved to
    * names + per-mode values. Absent when the file has no variables. */
   variables?: VariablesExport;
+  /** The file's named styles (colour, text, effect, grid). Absent when the file
+   * has none. */
+  styles?: StylesExport;
   /** SVG preview as text. When `assets` carries externalized images, the SVG
    * references them as `preview.assets/<name>` (see preview.html); otherwise
    * it's self-contained with images inline. */

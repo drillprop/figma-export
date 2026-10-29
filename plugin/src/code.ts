@@ -4,10 +4,12 @@
 // to the local figma-export server. Runs in the Figma sandbox (no `fetch`).
 import type {
   ComponentEntry,
+  DesignStyle,
   DesignToken,
   ExportPayload,
   ExportSummary,
   SerializedNode,
+  StylesExport,
   TokenValue,
   VariableCollectionInfo,
   VariablesExport,
@@ -39,6 +41,9 @@ type AnyNode = any;
 
 figma.showUI(__html__, { width: 380, height: 620 });
 
+/** Links to named styles. "" means no style, so pickFields drops it. */
+const STYLE_ID_FIELDS = ["fillStyleId", "strokeStyleId", "textStyleId", "effectStyleId", "gridStyleId"];
+
 /** Fields copied verbatim off a node when present. `figma.mixed` becomes "MIXED". */
 const NODE_FIELDS = [
   "id", "name", "type", "visible", "locked", "opacity", "blendMode", "isMask",
@@ -52,7 +57,7 @@ const NODE_FIELDS = [
   "characters", "fontSize", "fontName", "fontWeight", "letterSpacing", "lineHeight",
   "textAlignHorizontal", "textAlignVertical", "textCase", "textDecoration", "textAutoResize",
   "componentPropertyDefinitions", "componentProperties", "variantProperties",
-  "boundVariables",
+  "boundVariables", ...STYLE_ID_FIELDS,
 ];
 
 function pickFields(node: AnyNode): Record<string, unknown> {
@@ -67,6 +72,7 @@ function pickFields(node: AnyNode): Record<string, unknown> {
     }
     if (value === figma.mixed) value = "MIXED";
     if (value === undefined) continue;
+    if (value === "" && STYLE_ID_FIELDS.includes(key)) continue;
     out[key] = value;
   }
   return out;
@@ -131,6 +137,22 @@ async function serialize(node: AnyNode, ctx: SerializeCtx): Promise<SerializedNo
     if (values) data.variantValues = values;
     const defs = tryRead(node, "componentPropertyDefinitions") as Record<string, unknown> | undefined;
     if (defs && Object.keys(defs).length > 0) data.componentPropertyDefinitions = defs;
+  }
+
+  if (node.type === "TEXT" && (data.textStyleId === "MIXED" || data.fillStyleId === "MIXED")) {
+    try {
+      data.styledTextSegments = node
+        .getStyledTextSegments(["textStyleId", "fillStyleId"])
+        .map((s: AnyNode) => ({
+          characters: s.characters,
+          start: s.start,
+          end: s.end,
+          ...(s.textStyleId ? { textStyleId: s.textStyleId } : {}),
+          ...(s.fillStyleId ? { fillStyleId: s.fillStyleId } : {}),
+        }));
+    } catch {
+      /* segments unavailable */
+    }
   }
 
   if (node.type === "INSTANCE") {
@@ -323,18 +345,20 @@ function toTokenValue(raw: unknown, resolvedType: string): TokenValue {
 
 /**
  * Dump the file's design tokens. Seeds from every variable in every local
- * collection (the full catalog) plus the VariableIDs referenced in the tree +
- * remote masters (to pull in library tokens used by imported components), then
+ * collection (the full catalog) plus the VariableIDs referenced in the tree,
+ * remote masters, and styles (to pull in library tokens they use), then
  * resolves each variable and its collection, following alias chains. Returns
  * null only when the file has no variables at all.
  */
 async function resolveVariables(
   node: SerializedNode,
   remoteMasters: SerializedNode[],
+  styles: StylesExport | null,
 ): Promise<VariablesExport | null> {
   const rootIds = new Set<string>();
   collectVariableIds(node, rootIds);
   for (const master of remoteMasters) collectVariableIds(master, rootIds);
+  collectVariableIds(styles, rootIds);
 
   // Full catalog: seed with every variable in every local collection.
   try {
@@ -415,6 +439,94 @@ async function resolveVariables(
   }
 
   return { collections: [...collections.values()], tokens: [...tokens.values()] };
+}
+
+// --- named styles -------------------------------------------------------
+// A node's *StyleId fields only record opaque style ids. This dumps every local
+// style plus any library style the export references, so an agent can map an id
+// to a named style (e.g. colour "Dark Steel", text "HD/H1") and its values.
+
+/** Gather every style id the serialized tree references, skipping "MIXED". */
+function collectStyleIds(node: SerializedNode, ids: Set<string>): void {
+  for (const source of [node, ...(node.styledTextSegments ?? [])] as Record<string, unknown>[]) {
+    for (const field of STYLE_ID_FIELDS) {
+      const id = source[field];
+      if (typeof id === "string" && id && id !== "MIXED") ids.add(id);
+    }
+  }
+  for (const child of node.children ?? []) collectStyleIds(child, ids);
+}
+
+function toDesignStyle(style: BaseStyle): DesignStyle {
+  const base = {
+    id: style.id,
+    key: style.key || null,
+    name: style.name,
+    remote: Boolean(style.remote),
+    description: style.description || "",
+    ...(style.boundVariables && Object.keys(style.boundVariables).length > 0
+      ? { boundVariables: style.boundVariables }
+      : {}),
+  };
+  switch (style.type) {
+    case "PAINT":
+      return { ...base, type: "PAINT", paints: [...style.paints] };
+    case "TEXT":
+      return {
+        ...base,
+        type: "TEXT",
+        text: {
+          fontName: style.fontName,
+          fontSize: style.fontSize,
+          lineHeight: style.lineHeight,
+          letterSpacing: style.letterSpacing,
+          textCase: style.textCase,
+          textDecoration: style.textDecoration,
+          paragraphSpacing: style.paragraphSpacing,
+          paragraphIndent: style.paragraphIndent,
+        },
+      };
+    case "EFFECT":
+      return { ...base, type: "EFFECT", effects: [...style.effects] };
+    case "GRID":
+      return { ...base, type: "GRID", layoutGrids: [...style.layoutGrids] };
+  }
+}
+
+/** Dump the file's named styles: every local style plus the style ids referenced
+ * in the tree + remote masters (library styles). Null when there are none. */
+async function resolveStyles(
+  node: SerializedNode,
+  remoteMasters: SerializedNode[],
+): Promise<StylesExport | null> {
+  const ids = new Set<string>();
+  const listLocal = [
+    () => figma.getLocalPaintStylesAsync(),
+    () => figma.getLocalTextStylesAsync(),
+    () => figma.getLocalEffectStylesAsync(),
+    () => figma.getLocalGridStylesAsync(),
+  ];
+  for (const list of listLocal) {
+    try {
+      for (const style of await list()) ids.add(style.id);
+    } catch {
+      /* styles API unavailable in this context */
+    }
+  }
+  collectStyleIds(node, ids);
+  for (const master of remoteMasters) collectStyleIds(master, ids);
+
+  const styles: DesignStyle[] = [];
+  for (const id of ids) {
+    let style: BaseStyle | null;
+    try {
+      style = await figma.getStyleByIdAsync(id);
+    } catch {
+      continue; // unknown / inaccessible style id — skip
+    }
+    if (style) styles.push(toDesignStyle(style));
+  }
+  return styles.length > 0 ? { styles } : null;
 }
 
 /** Export settings for a PNG preview, bounding resolution so the raster stays small. */
@@ -754,8 +866,12 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
     console.log(`[figma-export] exported ${images.length} image(s)`);
   }
 
+  figma.ui.postMessage({ type: "progress", message: "Resolving styles…" });
+  const styles = await resolveStyles(node, remoteMasters);
+  if (styles) console.log(`[figma-export] resolved ${styles.styles.length} style(s)`);
+
   figma.ui.postMessage({ type: "progress", message: "Resolving design tokens…" });
-  const variables = await resolveVariables(node, remoteMasters);
+  const variables = await resolveVariables(node, remoteMasters, styles);
   if (variables) {
     console.log(
       `[figma-export] resolved ${variables.tokens.length} token(s) across ${variables.collections.length} collection(s)`,
@@ -772,6 +888,15 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
       tokens: variables.tokens.length,
     };
   }
+  if (styles) {
+    const count = (type: DesignStyle["type"]) => styles.styles.filter((s) => s.type === type).length;
+    summary.styles = {
+      paint: count("PAINT"),
+      text: count("TEXT"),
+      effect: count("EFFECT"),
+      grid: count("GRID"),
+    };
+  }
   if (images.length > 0) summary.imageAssets = images.length;
 
   const payload: ExportPayload = {
@@ -786,6 +911,7 @@ async function exportNode(target: AnyNode, msg: ExportMessage): Promise<NodeExpo
     components,
     remoteMasters,
     ...(variables ? { variables } : {}),
+    ...(styles ? { styles } : {}),
   };
 
   return { payload, svgBytes, pngBytes, icons, images };
