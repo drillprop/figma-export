@@ -335,6 +335,14 @@ function techDetail(s: ExportSummary): HTMLElement {
     wrap.appendChild(section("Design tokens", badges));
   }
 
+  if (s.styles) {
+    const total = s.styles.paint + s.styles.text + s.styles.effect + s.styles.grid;
+    const badges = el("div", { class: "chips" }, [
+      el("span", { class: "badge ok", text: `${total} styles` }),
+    ]);
+    wrap.appendChild(section("Styles", badges));
+  }
+
   if (s.imageAssets && s.imageAssets > 0) {
     const badges = el("div", { class: "chips" }, [
       el("span", { class: "badge ok", text: `${s.imageAssets} files` }),
