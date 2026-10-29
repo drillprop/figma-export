@@ -74,11 +74,16 @@ they're an overlay, not a stack.
 | `fills[]` (IMAGE) | The image is in `preview.assets/` — use it as `background-image` / `<img>`. |
 | `strokes[]` + `strokeWeight` | `border` (color from the stroke's paint). |
 | `cornerRadius` / `rectangleCornerRadii` | `border-radius` (single value, or `[tl,tr,br,bl]`). |
-| `effects[]` (DROP_SHADOW/INNER_SHADOW) | `box-shadow` (offset, radius, color). BLUR → `filter: blur()`. |
+| `effects[]` (DROP_SHADOW/INNER_SHADOW) | `box-shadow` (offset, radius, color). |
+| `effects[]` (LAYER_BLUR / BACKGROUND_BLUR) | `filter: blur()` / `backdrop-filter: blur()` (frosted panel over an image). |
 | `opacity` | `opacity`. |
+| `fillStyleId` / `strokeStyleId` / `effectStyleId` | A named style; look up `styles.json` `styles[].id` and use the project token named after it instead of the raw value. |
 
 ## Text fields
 
 `fontName.family` → `font-family`, `fontName.style` (e.g. "Bold") or `fontWeight` → `font-weight`,
 `fontSize` → `font-size`, `lineHeight` → `line-height`, `letterSpacing` → `letter-spacing`,
 `textAlignHorizontal` → `text-align`, `textCase` → `text-transform`.
+`textStyleId` names the text style (look it up in `styles.json`); map each style to one text utility.
+Styles split by breakpoint folder (`HD/H1`, `Tablet/H1`, `Mobile/H1`) become one responsive utility.
+`textStyleId: "MIXED"` means `styledTextSegments` lists the style per run of characters.
