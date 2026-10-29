@@ -54,6 +54,7 @@ and pick `plugin/manifest.json`.
      meta.json           ids, timestamp, and the summary
      remote-masters.json resolved library-component definitions (if any)
      variables.json      resolved design tokens referenced by the export (if any)
+     styles.json         named colour, text, effect, and grid styles (if any)
      preview.svg          vector reference
      preview.png          raster reference
      preview.html         open this to view the SVG (centered, no padding)
@@ -93,6 +94,16 @@ alias chains — plus any remote/library tokens the export references. Nodes in
 `variables.json`'s `tokens[].id` to recover the token name and value, so
 generated code can emit `var(--token)` instead of hard-coded hex/px. The file is
 written whenever the file has any variables.
+
+**Styles.** `styles.json` lists the file's named **styles**: every local colour,
+text, effect, and grid style, plus any library style the export references.
+Each carries its name (e.g. `Dark Steel`, `HD/H1`) and its values: paints, text
+properties, effects, or layout grids. Nodes in `node.json` carry `fillStyleId`,
+`strokeStyleId`, `textStyleId`, `effectStyleId`, and `gridStyleId`. Join those
+against `styles.json`'s `styles[].id` to recover the named style. A text layer
+that mixes styles has `textStyleId: "MIXED"` and a `styledTextSegments` list
+giving the style ids for each run of characters. Written whenever the file has
+any styles.
 
 The path you give is the exact base; want a `figma-export/` subfolder? Include
 it in the path. The server refuses to write if the folder doesn't exist.

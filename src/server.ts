@@ -183,12 +183,15 @@ app.post("/sync", async (c) => {
       hasVariables: Boolean(payload.variables),
       variableCount: payload.variables?.tokens.length ?? 0,
       variableCollectionCount: payload.variables?.collections.length ?? 0,
+      hasStyles: Boolean(payload.styles),
+      styleCount: payload.styles?.styles.length ?? 0,
       imageAssetCount: payload.images?.length ?? 0,
       summary: payload.summary ?? null,
     };
 
     const hasRemoteMasters = (payload.remoteMasters?.length ?? 0) > 0;
     const hasVariables = Boolean(payload.variables);
+    const hasStyles = Boolean(payload.styles);
     const images = payload.images ?? [];
 
     // preview.assets/: rasters pulled out of the SVG + vector icon SVGs, plus the
@@ -231,6 +234,9 @@ app.post("/sync", async (c) => {
             path.join(outDir, "variables.json"),
             JSON.stringify(payload.variables, null, 2),
           )
+        : Promise.resolve(),
+      hasStyles
+        ? writeFile(path.join(outDir, "styles.json"), JSON.stringify(payload.styles, null, 2))
         : Promise.resolve(),
       hasSvg
         ? writeFile(path.join(outDir, "preview.svg"), payload.svg as string)
