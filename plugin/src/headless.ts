@@ -1,6 +1,5 @@
-// Entry for the headless path: scripts/headless-code.ts bundles this into the
-// code string a bot passes to the Figma MCP `use_figma` tool. Runs in the plugin
-// sandbox without a UI, so it must not touch figma.ui, fetch, btoa, or Buffer.
+// Bundled into use_figma code, which runs in the plugin sandbox with no UI iframe.
+// test/sample.ts runInSandbox shadows the Node globals that sandbox lacks.
 import { type HeadlessConfig, type HeadlessPart, slicePayload } from "../../src/shared/headless";
 import { exportNode } from "./export-node";
 import { toPayload } from "./payload";

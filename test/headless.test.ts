@@ -7,13 +7,14 @@ import { test, type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 import { exportNode } from "../plugin/src/export-node";
 import { toPayload } from "../plugin/src/payload";
-import { DEFAULT_PART_SIZE, generateCode, MAX_CODE_CHARS } from "../scripts/headless-code";
+import { bytesToBase64 } from "../plugin/src/payload";
+import { DEFAULT_PART_SIZE, generateCode, MAX_CODE_CHARS, parseTarget } from "../scripts/headless-code";
 import { writeHeadless } from "../scripts/headless-write";
 import { app } from "../src/app";
-import type { HeadlessPart } from "../src/shared/headless";
-import type { SyncResponse } from "../src/shared/types";
+import { type HeadlessPart, joinParts, slicePayload } from "../src/shared/headless";
+import type { ExportPayload, SyncResponse } from "../src/shared/types";
 import { createFakeFigma } from "./fake-figma";
-import { headlessParts, SAMPLE_DIR, SAMPLE_EXPORTED_AT } from "./sample";
+import { headlessParts, SAMPLE_BUNDLE_DIR, SAMPLE_DIR, SAMPLE_EXPORTED_AT } from "./sample";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const TSX = path.join(ROOT, "node_modules", ".bin", "tsx");
@@ -25,13 +26,14 @@ async function tempDir(t: TestContext): Promise<string> {
   return dir;
 }
 
-/** The plugin's path: export in the plugin sandbox, encode as the UI does, POST to /sync. */
-async function syncBundle(outputDir: string, exportedAt: string): Promise<string> {
+async function pluginPathBundle(outputDir: string, exportedAt: string): Promise<string> {
   const fake = createFakeFigma();
+  // The desktop plugin enables the private Plugin API, so figma.fileKey is set there.
+  (fake.figma as { fileKey?: string }).fileKey = fake.fileKey;
   const scope = globalThis as { figma?: unknown };
   scope.figma = fake.figma;
   try {
-    const out = await exportNode(fake.target, { resolveRemote: true, exportedAt, fileKey: fake.fileKey });
+    const out = await exportNode(fake.target, { resolveRemote: true, exportedAt });
     const payload = toPayload(out);
     const res = await app.request("/sync", {
       method: "POST",
@@ -111,7 +113,7 @@ test("headless parts and the plugin's /sync path write identical bundles", async
   const serverDir = path.join(tmp, "server");
   const headlessDir = path.join(tmp, "headless");
   await mkdir(serverDir);
-  const bundle = await syncBundle(serverDir, SAMPLE_EXPORTED_AT);
+  const bundle = await pluginPathBundle(serverDir, SAMPLE_EXPORTED_AT);
 
   const parts = await headlessParts({ exportedAt: SAMPLE_EXPORTED_AT, partSize: SMALL_PART_SIZE });
   assert.ok(parts[0].parts > 1, `expected several parts at ${SMALL_PART_SIZE} chars, got ${parts[0].parts}`);
@@ -164,7 +166,7 @@ test("recorded sample result writes the same files as the server path", async (t
   const tmp = await tempDir(t);
   const serverDir = path.join(tmp, "server");
   await mkdir(serverDir);
-  await syncBundle(serverDir, SAMPLE_EXPORTED_AT);
+  await pluginPathBundle(serverDir, SAMPLE_EXPORTED_AT);
 
   const fixtureFiles = (await readdir(SAMPLE_DIR)).filter((name) => /^part-\d+\.json$/.test(name));
   assert.ok(fixtureFiles.length >= 3, `expected 3+ recorded parts in ${SAMPLE_DIR}, found ${fixtureFiles.length}`);
@@ -179,7 +181,7 @@ test("writer reads results saved as MCP content wrappers", async (t) => {
   const tmp = await tempDir(t);
   const serverDir = path.join(tmp, "server");
   await mkdir(serverDir);
-  await syncBundle(serverDir, SAMPLE_EXPORTED_AT);
+  await pluginPathBundle(serverDir, SAMPLE_EXPORTED_AT);
 
   const parts = await headlessParts({ exportedAt: SAMPLE_EXPORTED_AT, partSize: SMALL_PART_SIZE });
   assert.ok(parts.length >= 3, `need 3+ parts to cover every wrapper, got ${parts.length}`);
@@ -234,4 +236,44 @@ test("parts from different exports are rejected", async (t) => {
   const outDir = path.join(tmp, "out");
   await assert.rejects(writeHeadless(files, outDir), /different export/);
   assert.deepEqual(await filesUnder(outDir), [], "mismatched parts write no files");
+});
+
+test("the /sync bundle matches the recorded golden files", async (t) => {
+  const serverDir = await tempDir(t);
+  await pluginPathBundle(serverDir, SAMPLE_EXPORTED_AT);
+  await assertSameTree(serverDir, SAMPLE_BUNDLE_DIR);
+});
+
+test("bytesToBase64 matches Node's base64, padding included", () => {
+  for (const length of [0, 1, 2, 3, 4, 5, 1000, 0x8000 * 3 + 1]) {
+    const bytes = Uint8Array.from({ length }, (_, i) => (i * 37 + length) & 0xff);
+    assert.equal(bytesToBase64(bytes), Buffer.from(bytes).toString("base64"), `length ${length}`);
+  }
+});
+
+test("parseTarget reads node ids and Figma URLs", () => {
+  assert.deepEqual(parseTarget("12:34"), { nodeId: "12:34" });
+  assert.deepEqual(parseTarget("12-34"), { nodeId: "12:34" });
+  assert.deepEqual(parseTarget("I1:2;3:4"), { nodeId: "I1:2;3:4" });
+  assert.deepEqual(parseTarget("https://www.figma.com/design/AbC123/My-File?node-id=12-34&t=x"), {
+    nodeId: "12:34",
+    fileKey: "AbC123",
+  });
+  assert.deepEqual(parseTarget("https://www.figma.com/file/KeY9/x?node-id=I1-2%3B3-4"), {
+    nodeId: "I1:2;3:4",
+    fileKey: "KeY9",
+  });
+  assert.throws(() => parseTarget("https://www.figma.com/design/AbC123/My-File"), /no node-id/);
+  assert.throws(() => parseTarget("frame"), /not a node id/);
+});
+
+test("non-ASCII text survives slicing at every boundary", () => {
+  const payload = { node: { id: "1:1", name: "Zażółć 🎨🎨🎨", type: "TEXT" } } as unknown as ExportPayload;
+  for (let partSize = 1; partSize <= 12; partSize++) {
+    const first = slicePayload(payload, "1:1", 0, partSize);
+    const parts = Array.from({ length: first.parts }, (_, i) => slicePayload(payload, "1:1", i, partSize));
+    assert.ok(parts.every((p) => /^[\x00-\x7f]*$/.test(p.data)), "every slice is ASCII");
+    const viaUtf8 = parts.map((p) => ({ ...p, data: Buffer.from(p.data, "utf8").toString("utf8") }));
+    assert.deepEqual(joinParts(viaUtf8), payload, `partSize ${partSize}`);
+  }
 });

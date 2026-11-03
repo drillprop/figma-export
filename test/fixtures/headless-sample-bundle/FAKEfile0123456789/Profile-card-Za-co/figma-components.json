@@ -1,0 +1,101 @@
+[
+  {
+    "id": "12:37",
+    "name": "Badge",
+    "key": "badge-key",
+    "type": "COMPONENT",
+    "description": "Status badge",
+    "remote": false,
+    "componentSetId": null
+  },
+  {
+    "id": "20:3",
+    "name": "Size=md, Style=Primary",
+    "key": "button-md-key",
+    "type": "COMPONENT",
+    "description": "",
+    "remote": false,
+    "componentSetId": "20:1",
+    "variantValues": {
+      "Size": "md",
+      "Style": "Primary"
+    }
+  },
+  {
+    "id": "L:2",
+    "name": "Name=Close",
+    "key": "icon-close-key",
+    "type": "COMPONENT",
+    "description": "Close icon",
+    "remote": true,
+    "componentSetId": "L:1",
+    "variantValues": {
+      "Name": "Close"
+    },
+    "masterName": "Name=Close",
+    "setName": "Icon",
+    "setKey": "icon-set-key",
+    "variantProperties": {
+      "Name": [
+        "Close",
+        "Plus"
+      ]
+    }
+  },
+  {
+    "id": "12:45",
+    "name": "Star",
+    "key": "star-key",
+    "type": "COMPONENT",
+    "description": "",
+    "remote": false,
+    "componentSetId": null
+  },
+  {
+    "id": "L:9",
+    "name": "Avatar",
+    "key": "avatar-key",
+    "type": "COMPONENT",
+    "description": "",
+    "remote": true,
+    "componentSetId": null,
+    "masterError": "Component with key avatar-key is not published"
+  },
+  {
+    "id": "L:3",
+    "name": "Name=Plus",
+    "key": "icon-plus-key",
+    "type": "COMPONENT",
+    "description": "",
+    "remote": true,
+    "componentSetId": "L:1",
+    "variantValues": {
+      "Name": "Plus"
+    },
+    "masterName": "Name=Plus",
+    "setName": "Icon",
+    "setKey": "icon-set-key",
+    "variantProperties": {
+      "Name": [
+        "Close",
+        "Plus"
+      ]
+    }
+  },
+  {
+    "id": "L:10",
+    "name": "Tag",
+    "key": "tag-key",
+    "type": "COMPONENT",
+    "description": "Library tag",
+    "remote": true,
+    "componentSetId": null,
+    "masterName": "Tag",
+    "componentPropertyDefinitions": {
+      "Text#1:2": {
+        "type": "TEXT",
+        "defaultValue": "Tag"
+      }
+    }
+  }
+]

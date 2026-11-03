@@ -1,0 +1,174 @@
+{
+  "styles": [
+    {
+      "id": "S:paint-primary",
+      "key": "paint-primary-key",
+      "name": "Brand/Primary",
+      "remote": false,
+      "description": "Main brand colour",
+      "boundVariables": {
+        "paints": [
+          {
+            "type": "VARIABLE_ALIAS",
+            "id": "V:primary"
+          }
+        ]
+      },
+      "type": "PAINT",
+      "paints": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0.2,
+            "g": 0.4,
+            "b": 1
+          },
+          "boundVariables": {
+            "color": {
+              "type": "VARIABLE_ALIAS",
+              "id": "V:primary"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "S:text-h1",
+      "key": "text-h1-key",
+      "name": "HD/H1",
+      "remote": false,
+      "description": "",
+      "type": "TEXT",
+      "text": {
+        "fontName": {
+          "family": "Inter",
+          "style": "Bold"
+        },
+        "fontSize": 32,
+        "lineHeight": {
+          "value": 40,
+          "unit": "PIXELS"
+        },
+        "letterSpacing": {
+          "value": -2,
+          "unit": "PERCENT"
+        },
+        "textCase": "ORIGINAL",
+        "textDecoration": "NONE",
+        "paragraphSpacing": 0,
+        "paragraphIndent": 0
+      }
+    },
+    {
+      "id": "S:text-body",
+      "key": "text-body-key",
+      "name": "Body/Regular",
+      "remote": false,
+      "description": "",
+      "type": "TEXT",
+      "text": {
+        "fontName": {
+          "family": "Inter",
+          "style": "Regular"
+        },
+        "fontSize": 14,
+        "lineHeight": {
+          "unit": "AUTO"
+        },
+        "letterSpacing": {
+          "value": 0,
+          "unit": "PIXELS"
+        },
+        "textCase": "ORIGINAL",
+        "textDecoration": "NONE",
+        "paragraphSpacing": 8,
+        "paragraphIndent": 0
+      }
+    },
+    {
+      "id": "S:effect-shadow",
+      "key": "effect-shadow-key",
+      "name": "Shadow/Card",
+      "remote": false,
+      "description": "",
+      "type": "EFFECT",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0.25
+          },
+          "offset": {
+            "x": 0,
+            "y": 4
+          },
+          "radius": 12,
+          "spread": 0,
+          "showShadowBehindNode": false
+        }
+      ]
+    },
+    {
+      "id": "S:grid-8",
+      "key": "grid-8-key",
+      "name": "Grid/8pt",
+      "remote": false,
+      "description": "",
+      "type": "GRID",
+      "layoutGrids": [
+        {
+          "pattern": "GRID",
+          "sectionSize": 8,
+          "visible": true,
+          "color": {
+            "r": 1,
+            "g": 0,
+            "b": 0,
+            "a": 0.1
+          }
+        }
+      ]
+    },
+    {
+      "id": "S:text-remote",
+      "key": "text-remote-key",
+      "name": "Library/Caption",
+      "remote": true,
+      "description": "Caption from the library",
+      "boundVariables": {
+        "fontSize": {
+          "type": "VARIABLE_ALIAS",
+          "id": "V:lib-size"
+        }
+      },
+      "type": "TEXT",
+      "text": {
+        "fontName": {
+          "family": "Inter",
+          "style": "Medium"
+        },
+        "fontSize": 12,
+        "lineHeight": {
+          "value": 150,
+          "unit": "PERCENT"
+        },
+        "letterSpacing": {
+          "value": 0.5,
+          "unit": "PIXELS"
+        },
+        "textCase": "UPPER",
+        "textDecoration": "UNDERLINE",
+        "paragraphSpacing": 0,
+        "paragraphIndent": 0
+      }
+    }
+  ]
+}

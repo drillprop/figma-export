@@ -1,0 +1,86 @@
+{
+  "fileKey": "FAKEfile0123456789",
+  "fileName": "Sample file · Zażółć",
+  "nodeId": "12:34",
+  "nodeName": "Profile card <Zażółć> & \"co\"",
+  "exportedAt": "2026-11-03T12:00:00.000Z",
+  "componentCount": 7,
+  "remoteMasterCount": 2,
+  "hasSvg": true,
+  "hasPng": true,
+  "assetCount": 4,
+  "assetImageCount": 2,
+  "assetSvgCount": 2,
+  "hasPreviewHtml": true,
+  "hasVariables": true,
+  "variableCount": 9,
+  "variableCollectionCount": 2,
+  "hasStyles": true,
+  "styleCount": 6,
+  "imageAssetCount": 2,
+  "summary": {
+    "target": {
+      "id": "12:34",
+      "name": "Profile card <Zażółć> & \"co\"",
+      "type": "FRAME"
+    },
+    "totalNodes": 23,
+    "nodeTypes": {
+      "FRAME": 2,
+      "TEXT": 5,
+      "COMPONENT": 2,
+      "INSTANCE": 6,
+      "VECTOR": 4,
+      "RECTANGLE": 4
+    },
+    "textLayerCount": 5,
+    "textSamples": [
+      "Zażółć gęślą 🎨",
+      "A short biography that runs well past the sixty character sa…",
+      "New",
+      "Continue",
+      "Beta"
+    ],
+    "components": {
+      "total": 7,
+      "local": 3,
+      "remote": 4
+    },
+    "sets": [
+      {
+        "name": "Icon",
+        "axes": {
+          "Name": [
+            "Close",
+            "Plus"
+          ]
+        }
+      }
+    ],
+    "remoteMastersResolved": 2,
+    "remoteMasterErrors": [
+      {
+        "name": "Avatar",
+        "error": "Component with key avatar-key is not published"
+      }
+    ],
+    "truncated": false,
+    "truncatedAt": null,
+    "preview": {
+      "svg": true,
+      "png": true,
+      "svgSkipped": false
+    },
+    "variables": {
+      "collections": 2,
+      "tokens": 9
+    },
+    "styles": {
+      "paint": 1,
+      "text": 3,
+      "effect": 1,
+      "grid": 1
+    },
+    "imageAssets": 2
+  }
+}

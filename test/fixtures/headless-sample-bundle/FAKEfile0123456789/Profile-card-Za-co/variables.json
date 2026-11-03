@@ -1,0 +1,231 @@
+{
+  "collections": [
+    {
+      "id": "VC:theme",
+      "name": "Theme",
+      "key": "theme-key",
+      "remote": false,
+      "defaultModeId": "M:light",
+      "modes": [
+        {
+          "modeId": "M:light",
+          "name": "Light"
+        },
+        {
+          "modeId": "M:dark",
+          "name": "Dark"
+        }
+      ]
+    },
+    {
+      "id": "VC:lib",
+      "name": "Library tokens",
+      "key": "lib-key",
+      "remote": true,
+      "defaultModeId": "M:lib",
+      "modes": [
+        {
+          "modeId": "M:lib",
+          "name": "Default"
+        }
+      ]
+    }
+  ],
+  "tokens": [
+    {
+      "id": "V:button",
+      "name": "color/button/bg",
+      "key": "button-key",
+      "remote": false,
+      "resolvedType": "COLOR",
+      "description": "",
+      "collectionId": "VC:theme",
+      "collectionName": "Theme",
+      "scopes": [
+        "ALL_SCOPES"
+      ],
+      "valuesByMode": {
+        "Light": {
+          "alias": "V:brand",
+          "name": "color/brand"
+        },
+        "Dark": {
+          "hex": "#ffffff",
+          "rgba": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "V:space-md",
+      "name": "space/md",
+      "key": "space-md-key",
+      "remote": false,
+      "resolvedType": "FLOAT",
+      "description": "",
+      "collectionId": "VC:theme",
+      "collectionName": "Theme",
+      "scopes": [
+        "GAP",
+        "WIDTH_HEIGHT"
+      ],
+      "valuesByMode": {
+        "Light": 16,
+        "Dark": 16
+      }
+    },
+    {
+      "id": "V:lib-icon",
+      "name": "icon/fg",
+      "key": "lib-icon-key",
+      "remote": true,
+      "resolvedType": "COLOR",
+      "description": "From the library",
+      "collectionId": "VC:lib",
+      "collectionName": "Library tokens",
+      "scopes": [
+        "ALL_SCOPES"
+      ],
+      "valuesByMode": {
+        "Default": {
+          "alias": "V:lib-base",
+          "name": "base/black"
+        }
+      }
+    },
+    {
+      "id": "V:primary",
+      "name": "color/primary",
+      "key": "primary-key",
+      "remote": false,
+      "resolvedType": "COLOR",
+      "description": "",
+      "collectionId": "VC:theme",
+      "collectionName": "Theme",
+      "scopes": [
+        "ALL_FILLS"
+      ],
+      "valuesByMode": {
+        "Light": {
+          "hex": "#3366ff",
+          "rgba": {
+            "r": 0.2,
+            "g": 0.4,
+            "b": 1,
+            "a": 1
+          }
+        },
+        "Dark": {
+          "hex": "#1a339980",
+          "rgba": {
+            "r": 0.1,
+            "g": 0.2,
+            "b": 0.6,
+            "a": 0.5
+          }
+        }
+      }
+    },
+    {
+      "id": "V:lib-size",
+      "name": "type/caption",
+      "key": "lib-size-key",
+      "remote": true,
+      "resolvedType": "FLOAT",
+      "description": "From the library",
+      "collectionId": "VC:lib",
+      "collectionName": "Library tokens",
+      "scopes": [
+        "ALL_SCOPES"
+      ],
+      "valuesByMode": {
+        "Default": 12
+      }
+    },
+    {
+      "id": "V:brand",
+      "name": "color/brand",
+      "key": "brand-key",
+      "remote": false,
+      "resolvedType": "COLOR",
+      "description": "",
+      "collectionId": "VC:theme",
+      "collectionName": "Theme",
+      "scopes": [
+        "ALL_SCOPES"
+      ],
+      "valuesByMode": {
+        "Light": {
+          "alias": "V:primary",
+          "name": "color/primary"
+        },
+        "Dark": {
+          "alias": "V:primary",
+          "name": "color/primary"
+        }
+      }
+    },
+    {
+      "id": "V:label",
+      "name": "copy/cta",
+      "key": "label-key",
+      "remote": false,
+      "resolvedType": "STRING",
+      "description": "",
+      "collectionId": "VC:theme",
+      "collectionName": "Theme",
+      "scopes": [
+        "ALL_SCOPES"
+      ],
+      "valuesByMode": {
+        "Light": "Continue",
+        "Dark": "Weiter"
+      }
+    },
+    {
+      "id": "V:show-badge",
+      "name": "flags/badge",
+      "key": "show-badge-key",
+      "remote": false,
+      "resolvedType": "BOOLEAN",
+      "description": "",
+      "collectionId": "VC:theme",
+      "collectionName": "Theme",
+      "scopes": [
+        "ALL_SCOPES"
+      ],
+      "valuesByMode": {
+        "Light": true,
+        "Dark": false
+      }
+    },
+    {
+      "id": "V:lib-base",
+      "name": "base/black",
+      "key": "lib-base-key",
+      "remote": true,
+      "resolvedType": "COLOR",
+      "description": "From the library",
+      "collectionId": "VC:lib",
+      "collectionName": "Library tokens",
+      "scopes": [
+        "ALL_SCOPES"
+      ],
+      "valuesByMode": {
+        "Default": {
+          "hex": "#000000",
+          "rgba": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 1
+          }
+        }
+      }
+    }
+  ]
+}

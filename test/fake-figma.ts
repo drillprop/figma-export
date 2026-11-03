@@ -1,7 +1,3 @@
-// Deterministic in-memory stand-in for the slice of the Figma Plugin API the
-// export core touches, over one sample document. Values are typed against
-// @figma/plugin-typings so the fake returns what Figma would.
-
 type Mixed = typeof figma.mixed;
 
 type NodeProps = Partial<
@@ -24,12 +20,10 @@ interface NodeSpec extends NodeProps {
   name: string;
   type: NodeType;
   children?: NodeSpec[];
-  /** INSTANCE only: id of its main component. */
-  main?: string;
+  mainComponentId?: string;
   svg?: string;
   segments?: Segment[];
-  /** Remote component whose import by key fails. */
-  unpublished?: true;
+  failsImportByKey?: true;
 }
 
 type FakeNode = Record<string, unknown> & {
@@ -228,7 +222,7 @@ function sampleDocument(mixed: Mixed): { root: NodeSpec; library: NodeSpec[] } {
         id: "12:39",
         name: "Button",
         type: "INSTANCE",
-        main: "20:3",
+        mainComponentId: "20:3",
         visible: true,
         width: 120,
         height: 40,
@@ -255,7 +249,7 @@ function sampleDocument(mixed: Mixed): { root: NodeSpec; library: NodeSpec[] } {
         id: "12:41",
         name: "Close",
         type: "INSTANCE",
-        main: "L:2",
+        mainComponentId: "L:2",
         visible: true,
         width: 16,
         height: 16,
@@ -267,7 +261,7 @@ function sampleDocument(mixed: Mixed): { root: NodeSpec; library: NodeSpec[] } {
         id: "12:43",
         name: "Close",
         type: "INSTANCE",
-        main: "L:2",
+        mainComponentId: "L:2",
         visible: true,
         width: 16,
         height: 16,
@@ -292,7 +286,7 @@ function sampleDocument(mixed: Mixed): { root: NodeSpec; library: NodeSpec[] } {
         id: "12:47",
         name: "Avatar",
         type: "INSTANCE",
-        main: "L:9",
+        mainComponentId: "L:9",
         visible: true,
         width: 288,
         height: 96,
@@ -317,7 +311,7 @@ function sampleDocument(mixed: Mixed): { root: NodeSpec; library: NodeSpec[] } {
         id: "12:53",
         name: "Plus",
         type: "INSTANCE",
-        main: "L:3",
+        mainComponentId: "L:3",
         visible: false,
         width: 16,
         height: 16,
@@ -328,7 +322,7 @@ function sampleDocument(mixed: Mixed): { root: NodeSpec; library: NodeSpec[] } {
         id: "12:55",
         name: "Tag",
         type: "INSTANCE",
-        main: "L:10",
+        mainComponentId: "L:10",
         visible: true,
         width: 64,
         height: 24,
@@ -423,7 +417,7 @@ function sampleDocument(mixed: Mixed): { root: NodeSpec; library: NodeSpec[] } {
     description: "",
     remote: true,
     componentPropertyDefinitions: {},
-    unpublished: true,
+    failsImportByKey: true,
   };
 
   const tag: NodeSpec = {
@@ -627,11 +621,11 @@ const encoder = new TextEncoder();
 
 interface Registry {
   nodes: Map<string, FakeNode>;
-  unpublished: Set<FakeNode>;
+  failsImportByKey: Set<FakeNode>;
 }
 
 function buildTree(spec: NodeSpec, parent: FakeNode | null, registry: Registry): FakeNode {
-  const { children, main, svg, segments, unpublished, componentPropertyDefinitions, ...props } = spec;
+  const { children, mainComponentId, svg, segments, failsImportByKey, componentPropertyDefinitions, ...props } = spec;
   const node: FakeNode = { ...props, parent };
 
   if (componentPropertyDefinitions !== undefined) node.componentPropertyDefinitions = componentPropertyDefinitions;
@@ -673,7 +667,7 @@ function buildTree(spec: NodeSpec, parent: FakeNode | null, registry: Registry):
   }
 
   if (spec.type === "INSTANCE") {
-    node.getMainComponentAsync = async () => (main ? (registry.nodes.get(main) ?? null) : null);
+    node.getMainComponentAsync = async () => (mainComponentId ? (registry.nodes.get(mainComponentId) ?? null) : null);
   }
 
   if (segments) {
@@ -686,14 +680,14 @@ function buildTree(spec: NodeSpec, parent: FakeNode | null, registry: Registry):
   }
 
   registry.nodes.set(node.id, node);
-  if (unpublished) registry.unpublished.add(node);
+  if (failsImportByKey) registry.failsImportByKey.add(node);
   return node;
 }
 
 export function createFakeFigma() {
   const mixed: Mixed = Symbol("figma.mixed") as unknown as Mixed;
   const { root: rootSpec, library: librarySpecs } = sampleDocument(mixed);
-  const registry: Registry = { nodes: new Map(), unpublished: new Set() };
+  const registry: Registry = { nodes: new Map(), failsImportByKey: new Set() };
   const { nodes } = registry;
   const root = buildTree(rootSpec, null, registry);
   const documentIds = new Set(nodes.keys());
@@ -735,7 +729,7 @@ export function createFakeFigma() {
     },
     importComponentByKeyAsync: async (key: string) => {
       const found = byKey(key, "COMPONENT");
-      if (!found || registry.unpublished.has(found)) throw new Error(`Component with key ${key} is not published`);
+      if (!found || registry.failsImportByKey.has(found)) throw new Error(`Component with key ${key} is not published`);
       return found;
     },
     importComponentSetByKeyAsync: async (key: string) => {

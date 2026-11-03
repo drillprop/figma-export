@@ -1,6 +1,3 @@
-// Joins the HeadlessPart results a bot saved from `use_figma` calls back into the
-// ExportPayload and writes the same bundle the server's /sync writes.
-// Usage: pnpm -s headless:write --out <dir> <file-or-dir>...
 import { mkdir, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -19,7 +16,7 @@ const partSchema = z.object({
   part: z.number().int().nonnegative(),
   parts: z.number().int().positive(),
   partSize: z.number().int().positive(),
-  length: z.number().int().nonnegative(),
+  jsonLength: z.number().int().nonnegative(),
   hash: z.string(),
   partHash: z.string(),
   data: z.string(),
@@ -33,9 +30,7 @@ function tryJson(text: string): { ok: true; value: unknown } | { ok: false } {
   }
 }
 
-/** Parse text the way a bot may have saved it: plain JSON (possibly a JSON
- * string holding more JSON), or JSON embedded in surrounding prose (first `{`
- * to last `}`). */
+/** Bots may save a tool result wrapped in prose; fall back to first "{" through last "}". */
 function parseLenient(text: string): { ok: true; value: unknown } | { ok: false } {
   const trimmed = text.trim();
   const parsed = tryJson(trimmed);
@@ -45,9 +40,6 @@ function parseLenient(text: string): { ok: true; value: unknown } | { ok: false 
   return start >= 0 && end > start ? tryJson(trimmed.slice(start, end + 1)) : { ok: false };
 }
 
-/** Collect every envelope inside `value`, unwrapping arrays, MCP content
- * wrappers and JSON-in-a-string at any depth. An envelope's own `data` is never
- * searched: part 0's slice is itself the start of a JSON object. */
 function collectParts(value: unknown, file: string, found: HeadlessPart[]): void {
   if (typeof value === "string") {
     const parsed = parseLenient(value);
@@ -66,7 +58,7 @@ function collectParts(value: unknown, file: string, found: HeadlessPart[]): void
       throw new Error(`${file}: invalid headless part\n${z.prettifyError(result.error)}`);
     }
     found.push(result.data);
-    return;
+    return; // never descend into data: part 0's slice itself starts with "{"
   }
   for (const child of Object.values(value)) collectParts(child, file, found);
 }

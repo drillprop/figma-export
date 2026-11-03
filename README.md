@@ -133,6 +133,9 @@ To export a node:
 2. Call `use_figma` on the file with the contents of `part-0.js` as the code.
    Save the result to `part-0.json`. The result is a part object:
    `{ "format": "figma-export/headless-part@1", "part": 0, "parts": 3, ... }`.
+   If your client already saved the tool result to a file, pass that file to the
+   writer as it is. Otherwise write the result with your file tool exactly as it
+   came back. Do not shorten, reformat, or retype any part of `data`.
 3. If `parts` is greater than 1, generate the code for each remaining index with
    the command from step 1, call `use_figma` with it, and save each result as
    `part-<i>.json`:
@@ -156,12 +159,29 @@ text with the JSON inside it. It also accepts a directory of saved results.
 
 **Parts.** A tool response has a size limit, and a preview PNG alone can exceed
 it. So the code serializes the payload to JSON and returns one slice of
-`--part-size` characters (default 40,000) per call. Each call runs the whole
-export again and returns only its slice. Each part carries a hash of the full
-JSON and a hash of its own slice. If a part is missing, cut short, or from an
-export that differs, the writer stops and names the part to fetch again. If a
-`use_figma` response comes back truncated, generate again with a smaller
-`--part-size` and fetch every part again.
+`--part-size` characters (default 30,000) per call. The JSON escapes every
+non-ASCII character, so a slice is plain ASCII and can end anywhere. A part's
+JSON is about 1.2 times its slice, so about 36,000 characters at the default.
+Each call runs the whole export again and returns only its slice. Each part
+carries a hash of the full JSON and a hash of its own slice. If a part is
+missing, cut short, or from an export that differs, the writer stops and names
+the part to fetch again.
+
+- If a `use_figma` response comes back truncated, generate the code again with a
+  smaller `--part-size` and fetch every part again.
+- If the writer reports the same part as corrupt after you fetch it again, the
+  saved copy differs from the tool result. Save it again without changes, or use
+  a smaller `--part-size` so that each result is shorter.
+- If the writer reports parts from a different export, the file changed between
+  calls, or a preview rendered differently. Fetch every part again with the same
+  `--exported-at`.
+
+To try the headless path on a real file, pick a frame that has text, an
+instance, and an image fill. Export it with the plugin to one folder and
+headless to another, then compare the two bundles with
+`diff -r <plugin-out>/<fileKey> <headless-out>/<fileKey>`. Only `exportedAt` in
+`meta.json` differs, unless you pass the plugin run's timestamp as
+`--exported-at`.
 
 **Options.** `--no-remote` skips importing library masters by key, like the
 plugin's **Include components from other files** checkbox. `--file-key`
@@ -195,8 +215,9 @@ their payload contract from `src/shared/types.ts`, so the two cannot drift. The
 headless path reuses the same code: `plugin/src/export-node.ts` (export core),
 `plugin/src/payload.ts` (bytes to payload), and `src/bundle.ts` (bundle writer).
 `test/fake-figma.ts` is the in-memory Plugin API the tests run both paths
-against. To record `test/fixtures/headless-sample/` again after a payload change,
-run `pnpm exec tsx test/record-sample.ts`.
+against. After an intended change to the payload or the bundle files, run
+`pnpm test:record`. It records `test/fixtures/headless-sample/` (the parts) and
+`test/fixtures/headless-sample-bundle/` (the expected bundle) again.
 
 ## Notes / limits
 

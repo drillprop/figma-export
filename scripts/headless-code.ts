@@ -1,11 +1,3 @@
-// Generates the code string a bot passes to the Figma MCP `use_figma` tool to
-// export one part of a node's payload (see src/shared/headless.ts).
-//
-//   pnpm -s headless:code <node-id | figma-url> [--part N] [--part-size N]
-//     [--exported-at ISO] [--file-key KEY] [--no-remote]
-//
-// stdout carries only the code; the size and the command for the other parts go
-// to stderr.
 import { realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -14,7 +6,7 @@ import type { HeadlessConfig } from "../src/shared/headless";
 
 /** `use_figma` rejects longer code. */
 export const MAX_CODE_CHARS = 50_000;
-export const DEFAULT_PART_SIZE = 40_000;
+export const DEFAULT_PART_SIZE = 30_000;
 
 const ENTRY = fileURLToPath(new URL("../plugin/src/headless.ts", import.meta.url));
 
@@ -29,7 +21,10 @@ export async function generateCode(config: HeadlessConfig): Promise<string> {
     target: "es2017",
     logLevel: "silent",
   });
-  const code = `${result.outputFiles[0].text}\nreturn await figmaExportHeadless.run(${JSON.stringify(config)});`;
+  // A "use strict" prologue is a SyntaxError in a function body with non-simple
+  // parameters, and we don't control how use_figma wraps the code.
+  const bundle = result.outputFiles[0].text.replace(/^"use strict";\s*/, "");
+  const code = `${bundle}\nreturn await figmaExportHeadless.run(${JSON.stringify(config)});`;
   if (code.length >= MAX_CODE_CHARS) {
     throw new Error(`generated code is ${code.length} chars; use_figma accepts under ${MAX_CODE_CHARS}`);
   }
@@ -38,7 +33,6 @@ export async function generateCode(config: HeadlessConfig): Promise<string> {
 
 const NODE_ID = /^I?\d+:\d+(?:;\d+:\d+)*$/;
 
-/** A node id (`1:2`, or `1-2` as Figma URLs spell it) or a Figma URL. */
 export function parseTarget(arg: string): { nodeId: string; fileKey?: string } {
   if (/^https?:\/\//.test(arg)) {
     const url = new URL(arg);
@@ -51,6 +45,7 @@ export function parseTarget(arg: string): { nodeId: string; fileKey?: string } {
 }
 
 function normalizeNodeId(raw: string): string {
+  // Figma URLs spell node ids with "-" instead of ":".
   const id = raw.includes(":") ? raw : raw.replace(/-/g, ":");
   if (!NODE_ID.test(id)) throw new Error(`not a node id: ${raw}`);
   return id;

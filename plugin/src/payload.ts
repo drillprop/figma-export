@@ -1,6 +1,4 @@
-// Turns a NodeExport's raw bytes into the JSON ExportPayload the server's /sync
-// takes. Shared by the plugin UI and the headless path, so it must run in the
-// Figma sandbox too: no btoa, and TextDecoder only behind a guard.
+// Also runs in the Figma plugin sandbox, which has no btoa and may lack TextDecoder.
 import type { AssetFile, ExportPayload } from "../../src/shared/types";
 import type { NodeExport } from "./export-node";
 
@@ -9,9 +7,8 @@ const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012
 // chunk stays under argument limits, and joining chunks avoids quadratic
 // concatenation in engines without rope strings.
 const CHUNK = 0x8000;
-const PAD = 61; // "="
+const PAD = "=".charCodeAt(0);
 
-/** Standard padded base64. */
 export function bytesToBase64(bytes: Uint8Array): string {
   const parts: string[] = [];
   let codes: number[] = [];
@@ -44,8 +41,8 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return parts.join("");
 }
 
-/** UTF-8 to string. The fallback is the WHATWG decoder, so invalid input maps
- * to the same U+FFFD replacements TextDecoder produces. */
+/** Without TextDecoder, follows the WHATWG UTF-8 decoder so invalid bytes get
+ * the same U+FFFD replacements. */
 export function utf8Decode(bytes: Uint8Array): string {
   if (typeof TextDecoder !== "undefined") return new TextDecoder().decode(bytes);
   const parts: string[] = [];

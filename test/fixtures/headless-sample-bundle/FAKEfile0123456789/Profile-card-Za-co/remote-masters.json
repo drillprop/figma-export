@@ -1,0 +1,128 @@
+[
+  {
+    "id": "L:1",
+    "name": "Icon",
+    "type": "COMPONENT_SET",
+    "visible": true,
+    "width": 64,
+    "height": 32,
+    "componentPropertyDefinitions": {
+      "Name": {
+        "type": "VARIANT",
+        "defaultValue": "Close",
+        "variantOptions": [
+          "Close",
+          "Plus"
+        ]
+      }
+    },
+    "variantProperties": {
+      "Name": [
+        "Close",
+        "Plus"
+      ]
+    },
+    "children": [
+      {
+        "id": "L:2",
+        "name": "Name=Close",
+        "type": "COMPONENT",
+        "visible": true,
+        "width": 16,
+        "height": 16,
+        "variantValues": {
+          "Name": "Close"
+        },
+        "children": [
+          {
+            "id": "L:4",
+            "name": "Vector",
+            "type": "VECTOR",
+            "visible": true,
+            "width": 16,
+            "height": 16,
+            "fills": [
+              {
+                "type": "SOLID",
+                "visible": true,
+                "opacity": 1,
+                "blendMode": "NORMAL",
+                "color": {
+                  "r": 0,
+                  "g": 0,
+                  "b": 0
+                },
+                "boundVariables": {
+                  "color": {
+                    "type": "VARIABLE_ALIAS",
+                    "id": "V:lib-icon"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "L:3",
+        "name": "Name=Plus",
+        "type": "COMPONENT",
+        "visible": true,
+        "width": 16,
+        "height": 16,
+        "variantValues": {
+          "Name": "Plus"
+        },
+        "children": [
+          {
+            "id": "L:5",
+            "name": "Vector",
+            "type": "VECTOR",
+            "visible": true,
+            "width": 16,
+            "height": 16,
+            "fills": [
+              {
+                "type": "SOLID",
+                "visible": true,
+                "opacity": 1,
+                "blendMode": "NORMAL",
+                "color": {
+                  "r": 0,
+                  "g": 0,
+                  "b": 0
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "L:10",
+    "name": "Tag",
+    "type": "COMPONENT",
+    "visible": true,
+    "width": 64,
+    "height": 24,
+    "componentPropertyDefinitions": {
+      "Text#1:2": {
+        "type": "TEXT",
+        "defaultValue": "Tag"
+      }
+    },
+    "children": [
+      {
+        "id": "L:11",
+        "name": "Text",
+        "type": "TEXT",
+        "visible": true,
+        "width": 40,
+        "height": 16,
+        "characters": "Tag",
+        "textStyleId": "S:text-remote"
+      }
+    ]
+  }
+]

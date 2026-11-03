@@ -1,31 +1,23 @@
-// Wire contract for the headless export path. The `use_figma` code (built from
-// plugin/src/headless.ts) returns one HeadlessPart per call; the writer
-// (scripts/headless-write.ts) joins every part back into the ExportPayload the
-// plugin would have POSTed to /sync. Pure: runs in the Figma sandbox and in Node.
+// Imported by both the Figma plugin sandbox and Node: no platform APIs.
 import type { ExportPayload } from "./types";
 
 export const HEADLESS_PART_FORMAT = "figma-export/headless-part@1";
 
-/** One slice of `JSON.stringify(payload)`. Every call re-runs the whole export,
- * so `hash` (of the full JSON) proves all parts came from the same export, and
- * `partHash` pinpoints a slice that was truncated or mangled in transit. */
+/** One slice of the payload JSON. Every call re-runs the whole export, so `hash`
+ * (of the full JSON) proves all parts came from the same export, and `partHash`
+ * pinpoints a slice that was truncated or mangled in transit. */
 export interface HeadlessPart {
   format: typeof HEADLESS_PART_FORMAT;
   nodeId: string;
-  /** 0-based index of this slice. */
   part: number;
-  /** Total number of slices. Call the code once per index in [0, parts). */
   parts: number;
-  /** Characters per slice; the last slice may be shorter. */
   partSize: number;
-  /** Characters in the full payload JSON. */
-  length: number;
+  jsonLength: number;
   hash: string;
   partHash: string;
   data: string;
 }
 
-/** Options baked into the generated `use_figma` code string. */
 export interface HeadlessConfig {
   nodeId: string;
   part: number;
@@ -37,8 +29,7 @@ export interface HeadlessConfig {
   fileKey?: string;
 }
 
-/** FNV-1a over UTF-16 code units, as 8 hex chars. Not cryptographic; it only
- * has to catch truncation and mismatched re-runs. */
+/** Not cryptographic: it only has to catch truncated slices and mismatched re-runs. */
 export function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
@@ -48,13 +39,26 @@ export function fnv1a(text: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+/** JSON with every non-ASCII char as a `\uXXXX` escape. An ASCII-only string
+ * can be cut anywhere: no slice ends inside a surrogate pair, and no UTF-8 hop
+ * between the sandbox and the saved file can change a slice's length. */
+function asciiJson(payload: ExportPayload): string {
+  return JSON.stringify(payload).replace(
+    /[\u007f-￿]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+}
+
 export function slicePayload(
   payload: ExportPayload,
   nodeId: string,
   part: number,
   partSize: number,
 ): HeadlessPart {
-  const json = JSON.stringify(payload);
+  if (!Number.isInteger(partSize) || partSize < 1) {
+    throw new Error(`partSize must be a positive integer, got ${partSize}`);
+  }
+  const json = asciiJson(payload);
   const parts = Math.max(1, Math.ceil(json.length / partSize));
   if (!Number.isInteger(part) || part < 0 || part >= parts) {
     throw new Error(`part ${part} is out of range: this export has ${parts} part(s), 0..${parts - 1}`);
@@ -66,30 +70,33 @@ export function slicePayload(
     part,
     parts,
     partSize,
-    length: json.length,
+    jsonLength: json.length,
     hash: fnv1a(json),
     partHash: fnv1a(data),
     data,
   };
 }
 
-/** Rebuild the payload from every part (any order, duplicates allowed). Throws
- * an error naming the missing, corrupt, or mismatched parts to re-fetch. */
+/** Parts may arrive in any order and repeat, since bots re-save results. */
 export function joinParts(parts: HeadlessPart[]): ExportPayload {
   if (parts.length === 0) throw new Error("no headless parts found");
-  const { hash, parts: total, length, partSize, nodeId } = parts[0];
+  const { hash, parts: total, jsonLength, partSize, nodeId } = parts[0];
   const byIndex = new Map<number, HeadlessPart>();
   for (const p of parts) {
-    if (p.hash !== hash || p.parts !== total || p.length !== length || p.partSize !== partSize) {
+    if (p.hash !== hash || p.parts !== total || p.jsonLength !== jsonLength || p.partSize !== partSize) {
       throw new Error(
-        `part ${p.part} comes from a different export than part ${parts[0].part} (hash ${p.hash} vs ${hash}); ` +
-          "the file changed between calls, so re-run every part",
+        `part ${p.part} comes from a different export than part ${parts[0].part} (hash ${p.hash} vs ${hash}). ` +
+          "The file changed between calls, or its previews rendered differently. Re-run every part with the same --exported-at",
       );
     }
-    const expected = Math.min(partSize, length - p.part * partSize);
+    if (!Number.isInteger(p.part) || p.part < 0 || p.part >= total) {
+      throw new Error(`part ${p.part} is out of range: this export has ${total} part(s), 0..${total - 1}`);
+    }
+    const expected = Math.min(partSize, jsonLength - p.part * partSize);
     if (p.data.length !== expected || fnv1a(p.data) !== p.partHash) {
       throw new Error(
-        `part ${p.part} is corrupt (${p.data.length} of ${expected} chars, or its partHash does not match); re-fetch part ${p.part}`,
+        `part ${p.part} is corrupt (${p.data.length} of ${expected} chars, or its partHash does not match). ` +
+          `Re-fetch part ${p.part} and save the tool result verbatim`,
       );
     }
     byIndex.set(p.part, p);
@@ -99,6 +106,5 @@ export function joinParts(parts: HeadlessPart[]): ExportPayload {
     throw new Error(`missing part(s) ${missing.join(", ")} of ${total} for node ${nodeId}`);
   }
   const json = Array.from({ length: total }, (_, i) => (byIndex.get(i) as HeadlessPart).data).join("");
-  if (fnv1a(json) !== hash) throw new Error("joined parts do not match the export hash; re-run every part");
   return JSON.parse(json) as ExportPayload;
 }
