@@ -186,11 +186,17 @@ your own stack. Copy or symlink it into your project's skills directory (e.g.
 pnpm dev            # server, watch/restart (tsx)
 pnpm dev:plugin     # rebuild plugin on change (esbuild watch)
 pnpm check-types    # tsc --noEmit
+pnpm test           # node:test suite, incl. headless vs /sync bundle equality
 ```
 
 `plugin/code.js` and `plugin/ui.html` are build outputs (gitignored); run
 `pnpm build:plugin` before importing the manifest. The plugin and server share
-their payload contract from `src/shared/types.ts`, so the two cannot drift.
+their payload contract from `src/shared/types.ts`, so the two cannot drift. The
+headless path reuses the same code: `plugin/src/export-node.ts` (export core),
+`plugin/src/payload.ts` (bytes to payload), and `src/bundle.ts` (bundle writer).
+`test/fake-figma.ts` is the in-memory Plugin API the tests run both paths
+against. To record `test/fixtures/headless-sample/` again after a payload change,
+run `pnpm exec tsx test/record-sample.ts`.
 
 ## Notes / limits
 
