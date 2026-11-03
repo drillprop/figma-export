@@ -3,13 +3,14 @@
 // POSTs it to the local figma-export server (the sandbox main thread has no
 // `fetch`; only this iframe does).
 import type {
-  AssetFile,
   ExportPayload,
   ExportSummary,
   OpenResponse,
   PickFolderResponse,
   SyncResponse,
 } from "../../src/shared/types";
+import type { NodeExport } from "./export-node";
+import { toPayload } from "./payload";
 
 interface SelectionNode {
   id: string;
@@ -179,38 +180,6 @@ function typeLabel(type: string): string {
     SECTION: "Section",
   };
   return known[type] ?? type.charAt(0) + type.slice(1).toLowerCase().replace(/_/g, " ");
-}
-
-/** Pull raster images out of an SVG's inline data URIs into separate files, and
- * rewrite the references to point at `preview.assets/<name>`. Identical images
- * are deduped to one file. Pure-vector SVGs return unchanged with no assets. */
-function externalizeSvgImages(svg: string): { svg: string; assets: AssetFile[] } {
-  const assets: AssetFile[] = [];
-  const byData = new Map<string, string>(); // base64 data -> file name
-  const extFor = (mime: string): string =>
-    mime === "image/jpeg" ? "jpg" : mime === "image/gif" ? "gif" : mime === "image/png" ? "png" : "bin";
-
-  const pattern = /(xlink:href|href)="data:(image\/[a-zA-Z0-9.+-]+);base64,([^"]+)"/g;
-  const out = svg.replace(pattern, (_match, attr: string, mime: string, data: string) => {
-    let name = byData.get(data);
-    if (!name) {
-      name = `img-${assets.length}.${extFor(mime)}`;
-      byData.set(data, name);
-      assets.push({ name, base64: data });
-    }
-    return `${attr}="preview.assets/${name}"`;
-  });
-  return { svg: out, assets };
-}
-
-/** Encode bytes to base64 in chunks (avoids call-stack limits on big PNGs). */
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
 }
 
 // --- report rendering ---------------------------------------------------
@@ -620,40 +589,9 @@ interface PostResult {
 
 /** Encode a node's SVG/PNG/icon bytes into the payload and POST it to the
  * server. Shared by the single-node and batch paths so they stay in step. */
-async function postPayload(
-  payload: ExportPayload,
-  svgBytes: Uint8Array | null,
-  pngBytes: Uint8Array | null,
-  icons: { name: string; bytes: Uint8Array }[],
-  images: { imageHash: string; name: string; bytes: Uint8Array }[],
-): Promise<PostResult> {
-  const assets: AssetFile[] = [];
-
-  if (svgBytes) {
-    const raw = new TextDecoder().decode(svgBytes);
-    // Pull raster images out to files (keeping the SVG small); the server writes
-    // a preview.html that inlines the SVG so those external images still render.
-    const { svg, assets: images } = externalizeSvgImages(raw);
-    payload.svg = svg;
-    assets.push(...images);
-  }
-  if (pngBytes) payload.png = bytesToBase64(pngBytes);
-
-  // Vector icons from the node-walk share the same preview.assets/ folder.
-  for (const icon of icons ?? []) {
-    assets.push({ name: icon.name, base64: bytesToBase64(icon.bytes) });
-  }
-  if (assets.length) payload.assets = assets;
-
-  // Original-bytes images behind IMAGE fills, matchable to nodes by imageHash;
-  // written into preview.assets/ alongside the preview-only assets above.
-  if (images?.length) {
-    payload.images = images.map((img) => ({
-      imageHash: img.imageHash,
-      name: img.name,
-      base64: bytesToBase64(img.bytes),
-    }));
-  }
+async function postPayload(out: NodeExport): Promise<PostResult> {
+  const payload = toPayload(out);
+  const assets = payload.assets ?? [];
 
   const iconCount = assets.filter((a) => a.name.endsWith(".svg")).length;
   const imageCount = assets.length - iconCount;
@@ -775,7 +713,7 @@ window.onmessage = async (event: MessageEvent) => {
     return;
   }
   if (msg.type === "batch-item") {
-    const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons, msg.images);
+    const result = await postPayload(msg);
     const summary = msg.payload.summary;
     batchResults.push({
       name: msg.name,
@@ -803,7 +741,7 @@ window.onmessage = async (event: MessageEvent) => {
   }
   if (msg.type !== "result") return;
 
-  const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons, msg.images);
+  const result = await postPayload(msg);
   endExporting();
   if (result.ok) {
     clearErrors();
