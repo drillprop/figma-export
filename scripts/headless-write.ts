@@ -4,6 +4,7 @@
 import { mkdir, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
@@ -136,8 +137,14 @@ async function main(argv: string[]): Promise<void> {
     console.error(USAGE);
     process.exit(1);
   }
+  // `pnpm headless:write` runs from the package root; resolve the caller's
+  // relative paths against the directory pnpm was invoked from instead.
+  const cwd = process.env.npm_lifecycle_event === "headless:write" ? (process.env.INIT_CWD ?? process.cwd()) : process.cwd();
   try {
-    const result = await writeHeadless(inputs, out);
+    const result = await writeHeadless(
+      inputs.map((input) => path.resolve(cwd, input)),
+      path.resolve(cwd, out),
+    );
     console.log(`bundle: ${result.path}`);
     if (result.preview) console.log(`preview: ${result.preview}`);
   } catch (error) {
@@ -146,6 +153,6 @@ async function main(argv: string[]): Promise<void> {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   void main(process.argv.slice(2));
 }

@@ -108,6 +108,70 @@ any styles.
 The path you give is the exact base; want a `figma-export/` subfolder? Include
 it in the path. The server refuses to write if the folder doesn't exist.
 
+## Headless export
+
+A bot can write the same bundle without the Figma desktop app, the plugin, or the
+server. It runs the plugin's own export code through the Figma MCP's `use_figma`
+tool, which executes Plugin API JavaScript on a file and returns the code's JSON
+result. The result is exactly the body the plugin POSTs to `/sync`, cut into
+parts, and the writer passes it to the same file writer the server uses.
+
+To export a node:
+
+1. Generate the code for part 0. Pass a Figma URL that carries a `node-id`, or a
+   node id plus `--file-key`. Pass the file key either way: outside a private
+   plugin, `figma.fileKey` is not available, and the bundle folder is named after it.
+
+   ```bash
+   pnpm -s headless:code 'https://www.figma.com/design/<fileKey>/<name>?node-id=1-2' > part-0.js
+   ```
+
+   The code goes to stdout. The generator prints the code size and the command
+   for the other parts to stderr. That command repeats `--exported-at` with the
+   value from this run. Every part must use the same value.
+
+2. Call `use_figma` on the file with the contents of `part-0.js` as the code.
+   Save the result to `part-0.json`. The result is a part object:
+   `{ "format": "figma-export/headless-part@1", "part": 0, "parts": 3, ... }`.
+3. If `parts` is greater than 1, generate the code for each remaining index with
+   the command from step 1, call `use_figma` with it, and save each result as
+   `part-<i>.json`:
+
+   ```bash
+   pnpm -s headless:code '<same url>' --exported-at <value from step 1> --part 1 > part-1.js
+   ```
+
+4. Write the bundle:
+
+   ```bash
+   pnpm -s headless:write --out /path/to/your/repo/design part-*.json
+   ```
+
+   The writer prints the bundle folder, `<out>/<fileKey>/<node-name>/`. It
+   creates `--out` when the folder does not exist.
+
+The writer accepts each saved result in any of these forms: the part object itself, an
+array of parts, the MCP content wrapper (`[{"type":"text","text":"..."}]`), or
+text with the JSON inside it. It also accepts a directory of saved results.
+
+**Parts.** A tool response has a size limit, and a preview PNG alone can exceed
+it. So the code serializes the payload to JSON and returns one slice of
+`--part-size` characters (default 40,000) per call. Each call runs the whole
+export again and returns only its slice. Each part carries a hash of the full
+JSON and a hash of its own slice. If a part is missing, cut short, or from an
+export that differs, the writer stops and names the part to fetch again. If a
+`use_figma` response comes back truncated, generate again with a smaller
+`--part-size` and fetch every part again.
+
+**Options.** `--no-remote` skips importing library masters by key, like the
+plugin's **Include components from other files** checkbox. `--file-key`
+overrides the file key from the URL. A bare node id accepts both `1:2` and `1-2`.
+
+**Limits.** The generator fails when the code reaches the `use_figma` limit of
+50,000 characters. The generated code calls only Plugin API methods that
+`use_figma` supports: no `figma.loadAllPagesAsync`, no `setPluginData`, and no
+`createImageAsync`.
+
 ## Applying an export (agent skill)
 
 The exported JSON is meant to be fed to AI tooling. `skills/apply-figma-export/`
