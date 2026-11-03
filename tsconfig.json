@@ -12,5 +12,5 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["src", "plugin/src"]
+  "include": ["src", "plugin/src", "scripts", "test"]
 }

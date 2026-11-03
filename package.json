@@ -10,7 +10,10 @@
     "build:plugin": "node scripts/build-plugin.mjs",
     "dev:plugin": "node scripts/build-plugin.mjs --watch",
     "check-types": "tsc --noEmit",
-    "sandcastle": "tsx .sandcastle/main.ts"
+    "sandcastle": "tsx .sandcastle/main.ts",
+    "headless:code": "tsx scripts/headless-code.ts",
+    "headless:write": "tsx scripts/headless-write.ts",
+    "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
