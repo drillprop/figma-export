@@ -116,6 +116,13 @@ is an installable agent skill that teaches an agent how to read a bundle
 your own stack. Copy or symlink it into your project's skills directory (e.g.
 `.claude/skills/apply-figma-export`) and commit the export alongside your code.
 
+## Comparing a design with the live site (Chrome extension)
+
+`extension/` is an unpacked Chrome extension that overlays an export's
+`preview.png` on any page, local or deployed. Use it to compare the design with
+the implementation in onion, swipe, or difference mode. See
+[`extension/README.md`](extension/README.md).
+
 ## Development
 
 ```bash
