@@ -24,7 +24,7 @@
   const MATCH = { patch: 96, radius: 12, minContrast: 8 }; // CSS px; contrast = std dev of gray levels
   const THUMB = { w: 160, h: 240 };
 
-  let design = null; // { name, src, width, height }, width/height in CSS px
+  let design = null; // { name, src, width, height, background }, width/height in CSS px, background "#rrggbb" or null
   const settings = {
     mode: "onion",
     opacity: 0.5,
@@ -37,6 +37,8 @@
     pinned: false, // true: overlay sticks to the screen; false: it scrolls with the page
     step: 1,
     lock: "free",
+    backdrop: true, // paint a colour behind the design so its transparent areas don't show the live page
+    backdropColor: "", // "" means the frame's own fill from node.json
   };
   const ui = { panel: null, nav: null, minimized: false, navHidden: false }; // panel/nav: {left, top} once dragged
   let mounted = false;
@@ -108,6 +110,8 @@
   input[type=number] { width: 56px; }
   input[type=range] { width: 100%; accent-color: ${ACCENT}; padding: 0; border: 0; background: none; }
   input[type=checkbox] { accent-color: ${ACCENT}; margin: 0; }
+  input[type=color] { width: 28px; height: 22px; padding: 1px 2px; }
+  #backdropPresets button { padding: 2px 6px; }
   label.row { cursor: pointer; }
   .warn { background: #422006; color: #fdba74; border-radius: 6px; padding: 6px 8px; }
   .drop { border: 1px dashed #52525b; border-radius: 6px; padding: 8px; text-align: center; }
@@ -141,6 +145,14 @@
         .map(([id, m], i) => `<button data-mode="${id}">${m.label} <kbd>${i + 1}</kbd></button>`).join("")}</div>
       <div id="opRow"><div class="row"><span class="grow">Design opacity</span><span id="opVal"></span></div>
         <input type="range" id="opacity" min="0" max="1" step="0.01"></div>
+
+      <div class="row" title="Transparent areas of the design image would show the live page through it. This paints a solid colour behind the design instead.">
+        <label class="row grow"><input type="checkbox" id="backdrop"><span>Background</span></label>
+        <div class="seg" id="backdropPresets">
+          <button data-backdrop="" title="The frame's own fill from node.json">Frame</button>
+          <button data-backdrop="#ffffff" title="Plain white">White</button>
+        </div>
+        <input type="color" id="backdropColor" title="Any other colour"></div>
 
       <h4>Page</h4>
       <div class="row"><span class="grow" title="Resizes the real Chrome window so the page area is exactly this size">Window</span>
@@ -287,8 +299,17 @@
   async function designFromPng(file, scale, name) {
     const src = await readDataUrl(file);
     const image = await loadImage(src);
-    return { name, src, width: image.naturalWidth / scale, height: image.naturalHeight / scale };
+    return { name, src, width: image.naturalWidth / scale, height: image.naturalHeight / scale, background: null };
   }
+
+  function frameFill(node) {
+    const paint = [...(node.fills ?? []), ...(node.backgrounds ?? [])].find((p) => p.type === "SOLID" && p.visible !== false);
+    if (!paint) return null;
+    const hex = (v) => Math.round(v * 255).toString(16).padStart(2, "0");
+    return `#${hex(paint.color.r)}${hex(paint.color.g)}${hex(paint.color.b)}`;
+  }
+
+  const backdropColor = () => settings.backdropColor || design?.background || "#ffffff";
 
   async function designFromFolder(files) {
     const byPath = Object.fromEntries([...files].map((f) => [f.webkitRelativePath.split("/").slice(1).join("/"), f]));
@@ -303,7 +324,10 @@
       throw new Error("node.json in that folder isn't valid JSON.");
     }
     if (!(node.width > 0 && node.height > 0)) throw new Error("node.json has no frame width and height.");
-    return { name: String(node.name ?? folder), src: await readDataUrl(png), width: node.width, height: node.height };
+    return {
+      name: String(node.name ?? folder), src: await readDataUrl(png),
+      width: node.width, height: node.height, background: frameFill(node),
+    };
   }
 
   async function load(promise) {
@@ -317,6 +341,7 @@
   function setDesign(next) {
     design = next;
     settings.offset = { x: 0, y: 0 };
+    settings.backdropColor = "";
     saveDesign();
     commit();
   }
@@ -433,6 +458,7 @@
       mixBlendMode: !match && settings.mode === "difference" ? "difference" : "normal",
       pointerEvents: moving || picking ? "auto" : "none",
       cursor: picking ? "crosshair" : moving ? "grab" : "",
+      backgroundColor: settings.backdrop ? backdropColor() : "transparent",
     };
   }
 
@@ -548,6 +574,13 @@
     $("opVal").textContent = Math.round(settings.opacity * 100) + "%";
     $("viewport").value = settings.viewport;
     $("flatten").checked = settings.flatten;
+    $("backdrop").checked = settings.backdrop;
+    $("backdropColor").value = backdropColor();
+    $("backdropColor").disabled = !settings.backdrop;
+    for (const b of panel.querySelectorAll("[data-backdrop]")) {
+      b.disabled = !settings.backdrop;
+      b.setAttribute("aria-pressed", b.dataset.backdrop === settings.backdropColor);
+    }
     $("flatCount").textContent = settings.flatten ? `${flattened.size} el` : "";
     $("hide").firstChild.textContent = settings.hidden ? "Show overlay " : "Hide overlay ";
     const size = pageSize();
@@ -821,6 +854,9 @@
   $("hide").onclick = () => { settings.hidden = !settings.hidden; commit(); };
   $("viewport").onchange = (e) => { settings.viewport = e.target.value; commit(); };
   $("flatten").onchange = (e) => { settings.flatten = e.target.checked; commit(); };
+  $("backdrop").onchange = (e) => { settings.backdrop = e.target.checked; commit(); };
+  $("backdropColor").oninput = (e) => { settings.backdropColor = e.target.value; commit(); };
+  $("backdropPresets").onclick = pick("data-backdrop", (v) => (settings.backdropColor = v));
   $("remove").onclick = () => removeDesign();
   $("close").onclick = () => toggle();
   $("min").onclick = () => setMinimized(!ui.minimized);

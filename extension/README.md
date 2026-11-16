@@ -34,6 +34,12 @@ design, click **✕ Remove**. You can undo for 8 seconds.
 Press **Alt+1**, **Alt+2**, or **Alt+3** to switch modes and **Alt+H** to hide
 the overlay.
 
+**Background** paints a solid colour behind the design. A Figma export can be
+transparent in places, and without a background the live page shows through
+those areas, so the design side of Swipe still shows the website. Choose
+**Frame** for the frame's fill from `node.json` (the default), **White**, or
+any colour in the picker. Clear the checkbox to see through the design again.
+
 ## Match the page size
 
 A responsive page only lines up with the design at the frame's size.
