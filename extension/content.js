@@ -23,6 +23,7 @@
   const STEPS = [1, 5, 10, 50];
   const MATCH = { patch: 96, radius: 12, minContrast: 8 }; // CSS px; contrast = std dev of gray levels
   const THUMB = { w: 160, h: 240 };
+  const STRIP = 4096; // source px; an image taller than the GPU max texture size (16384) is re-uploaded on every raster
 
   let design = null; // { name, src, width, height, background }, width/height in CSS px, background "#rrggbb" or null
   const settings = {
@@ -44,9 +45,7 @@
   let mounted = false;
   let moving = false; // hand tool: Space held or ✋ toggled
   let match = null; // { phase: "design" | "live" | "refining", point?: {x, y} }
-  // The design each element last received. design.src is tens of MB, so reading it back to compare costs more than a render.
-  let imgDesign = null;
-  let thumbDesign = null;
+  let stripsDesign = null;
 
   // --- DOM ------------------------------------------------------------------
 
@@ -59,11 +58,7 @@
 
   // The layer clips the overlay to the page's own size, so a large design never adds scrollbars.
   const layer = make("layer", { position: "absolute", top: "0", left: "0", overflow: "clip", pointerEvents: "none" });
-  const overlay = make("overlay", { position: "absolute", zIndex: Z_OVERLAY, margin: "0", padding: "0" });
-  const img = document.createElement("img");
-  img.draggable = false;
-  Object.assign(img.style, { display: "block", width: "100%", height: "100%", maxWidth: "none", userSelect: "none" });
-  overlay.append(img);
+  const overlay = make("overlay", { position: "absolute", zIndex: Z_OVERLAY, margin: "0", padding: "0", userSelect: "none" });
   layer.append(overlay);
 
   const handle = make("handle", {
@@ -192,8 +187,8 @@
   button { border-radius: 5px; padding: 2px 6px; }
   .bar { display: flex; align-items: center; gap: 4px; padding: 0 2px 6px; cursor: move; }
   .bar span { flex: 1; color: #a1a1aa; }
-  .thumb { position: relative; background-repeat: no-repeat; background-size: 100% 100%; cursor: pointer;
-           outline: 1px solid #3f3f46; overflow: hidden; }
+  .thumb { position: relative; cursor: pointer; outline: 1px solid #3f3f46; overflow: hidden; }
+  .thumb canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   .vp { position: absolute; border: 2px solid ${ACCENT}; background: ${ACCENT}22; box-sizing: border-box; cursor: grab; }
   .vp:active { cursor: grabbing; }
   .sec { margin-top: 8px; display: grid; gap: 6px; }
@@ -486,11 +481,41 @@
     Object.assign(layer.style, { width: root.scrollWidth + "px", height: root.scrollHeight + "px" });
   }
 
-  function renderOverlay() {
-    if (imgDesign !== design) {
-      img.src = design.src;
-      imgDesign = design;
+  async function buildStrips(d) {
+    stripsDesign = d;
+    overlay.replaceChildren();
+    n$("thumb").replaceChildren(n$("vp"));
+    try {
+      const bitmap = await createImageBitmap(await (await fetch(d.src)).blob());
+      const ds = bitmap.width / d.width;
+      const strips = [];
+      for (let y = 0; y < bitmap.height; y += STRIP) {
+        const h = Math.min(STRIP, bitmap.height - y);
+        const strip = document.createElement("canvas");
+        strip.width = bitmap.width;
+        strip.height = h;
+        strip.style.cssText = `display:block;width:100%;height:${h / ds}px`;
+        strip.getContext("bitmaprenderer").transferFromImageBitmap(await createImageBitmap(bitmap, 0, y, bitmap.width, h));
+        strips.push(strip);
+      }
+      const thumb = document.createElement("canvas");
+      const k = thumbScale(d) * devicePixelRatio;
+      thumb.width = Math.ceil(d.width * k);
+      thumb.height = Math.ceil(d.height * k);
+      const g = thumb.getContext("2d");
+      g.imageSmoothingQuality = "high";
+      g.drawImage(bitmap, 0, 0, thumb.width, thumb.height);
+      bitmap.close();
+      if (stripsDesign !== d) return;
+      overlay.replaceChildren(...strips);
+      n$("thumb").replaceChildren(thumb, n$("vp"));
+    } catch (e) {
+      if (design === d) say(`Couldn't show the design: ${e.message}`, 6000);
     }
+  }
+
+  function renderOverlay() {
+    if (stripsDesign !== design) buildStrips(design);
     Object.assign(overlay.style, overlayLook(), {
       position: settings.pinned ? "fixed" : "absolute",
       width: design.width + "px", height: design.height + "px",
@@ -504,7 +529,7 @@
 
   // --- navigator ------------------------------------------------------------
 
-  const thumbScale = () => Math.min(THUMB.w / design.width, THUMB.h / design.height);
+  const thumbScale = (d = design) => Math.min(THUMB.w / d.width, THUMB.h / d.height);
 
   function placeNavigatorBox() {
     if (!navHost.isConnected) return;
@@ -525,12 +550,7 @@
       restoreBox(navHost, ui.nav);
     }
     const k = thumbScale();
-    const thumb = n$("thumb");
-    if (thumbDesign !== design) {
-      thumb.style.backgroundImage = `url("${design.src}")`;
-      thumbDesign = design;
-    }
-    Object.assign(thumb.style, { width: design.width * k + "px", height: design.height * k + "px" });
+    Object.assign(n$("thumb").style, { width: design.width * k + "px", height: design.height * k + "px" });
     const show = (v) => String(Number(v.toFixed(2)));
     if (nav.activeElement?.id !== "ox") n$("ox").value = show(settings.offset.x);
     if (nav.activeElement?.id !== "oy") n$("oy").value = show(settings.offset.y);
