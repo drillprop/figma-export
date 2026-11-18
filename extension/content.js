@@ -44,6 +44,9 @@
   let mounted = false;
   let moving = false; // hand tool: Space held or ✋ toggled
   let match = null; // { phase: "design" | "live" | "refining", point?: {x, y} }
+  // The design each element last received. design.src is tens of MB, so reading it back to compare costs more than a render.
+  let imgDesign = null;
+  let thumbDesign = null;
 
   // --- DOM ------------------------------------------------------------------
 
@@ -484,7 +487,10 @@
   }
 
   function renderOverlay() {
-    if (img.getAttribute("src") !== design.src) img.src = design.src;
+    if (imgDesign !== design) {
+      img.src = design.src;
+      imgDesign = design;
+    }
     Object.assign(overlay.style, overlayLook(), {
       position: settings.pinned ? "fixed" : "absolute",
       width: design.width + "px", height: design.height + "px",
@@ -520,8 +526,10 @@
     }
     const k = thumbScale();
     const thumb = n$("thumb");
-    const bg = `url("${design.src}")`;
-    if (thumb.style.backgroundImage !== bg) thumb.style.backgroundImage = bg;
+    if (thumbDesign !== design) {
+      thumb.style.backgroundImage = `url("${design.src}")`;
+      thumbDesign = design;
+    }
     Object.assign(thumb.style, { width: design.width * k + "px", height: design.height * k + "px" });
     const show = (v) => String(Number(v.toFixed(2)));
     if (nav.activeElement?.id !== "ox") n$("ox").value = show(settings.offset.x);
