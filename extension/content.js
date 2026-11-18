@@ -485,16 +485,17 @@
     stripsDesign = d;
     overlay.replaceChildren();
     n$("thumb").replaceChildren(n$("vp"));
+    let bitmap;
     try {
-      const bitmap = await createImageBitmap(await (await fetch(d.src)).blob());
-      const ds = bitmap.width / d.width;
+      bitmap = await createImageBitmap(await (await fetch(d.src)).blob());
       const strips = [];
       for (let y = 0; y < bitmap.height; y += STRIP) {
+        if (stripsDesign !== d) return;
         const h = Math.min(STRIP, bitmap.height - y);
         const strip = document.createElement("canvas");
         strip.width = bitmap.width;
         strip.height = h;
-        strip.style.cssText = `display:block;width:100%;height:${h / ds}px`;
+        strip.style.cssText = `display:block;width:100%;height:${(h * d.height) / bitmap.height}px`;
         strip.getContext("bitmaprenderer").transferFromImageBitmap(await createImageBitmap(bitmap, 0, y, bitmap.width, h));
         strips.push(strip);
       }
@@ -505,12 +506,13 @@
       const g = thumb.getContext("2d");
       g.imageSmoothingQuality = "high";
       g.drawImage(bitmap, 0, 0, thumb.width, thumb.height);
-      bitmap.close();
       if (stripsDesign !== d) return;
       overlay.replaceChildren(...strips);
       n$("thumb").replaceChildren(thumb, n$("vp"));
     } catch (e) {
       if (design === d) say(`Couldn't show the design: ${e.message}`, 6000);
+    } finally {
+      bitmap?.close();
     }
   }
 
