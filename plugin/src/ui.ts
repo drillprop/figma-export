@@ -75,6 +75,34 @@ let busy = false;
 // Accumulated per-node outcomes for an in-flight batch (2+ nodes).
 let batchResults: BatchResult[] = [];
 
+function mb(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function sumBytes(files: { bytes: Uint8Array }[] | undefined): number {
+  return (files ?? []).reduce((total, file) => total + file.bytes.length, 0);
+}
+
+/** Log a step to the plugin console and to the server's terminal, so a stalled
+ * or failed export shows where it stopped without opening Figma's console. */
+function trace(message: string): void {
+  console.log(`[figma-export] ${message}`);
+  void fetch(`${serverBase()}/log`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ message }),
+  }).catch(() => {});
+}
+
+window.addEventListener("error", (event) => {
+  trace(`uncaught error: ${event.message}`);
+  failStuckExport(event.message);
+});
+window.addEventListener("unhandledrejection", (event) => {
+  trace(`unhandled rejection: ${String(event.reason)}`);
+  failStuckExport(String(event.reason));
+});
+
 function setStatus(text: string, cls: "" | "err" | "progress" = ""): void {
   statusEl.textContent = text;
   statusEl.className = cls;
@@ -134,12 +162,13 @@ function copyEndpoint(): void {
 }
 
 /** Server unreachable — plain message + retry, no onboarding (decision #10). */
-function showServerUnreachable(): void {
+function showServerUnreachable(detail?: string): void {
   setConnection("down");
   setStatus("");
   showBanner(
     "Can’t reach the export server",
-    "The local server isn’t responding. Make sure it’s running, then try again.",
+    "The local server isn’t responding. Make sure it’s running, then try again." +
+      (detail ? `\n${detail}` : ""),
     [
       { label: "Try again", solid: true, onClick: startExport },
       { label: "Copy endpoint", onClick: copyEndpoint },
@@ -159,11 +188,12 @@ function showFolderNotFound(): void {
 }
 
 /** The export itself failed — offer a retry, hint at a smaller frame. */
-function showExportFailed(): void {
+function showExportFailed(detail?: string): void {
   setStatus("");
   showBanner(
     "Export didn’t finish",
-    "Something went wrong while exporting this selection. Try again, and if it keeps happening, try a smaller frame.",
+    "Something went wrong while exporting this selection. Try again, and if it keeps happening, try a smaller frame." +
+      (detail ? `\n${detail}` : ""),
     [{ label: "Try again", solid: true, onClick: startExport }],
   );
 }
@@ -183,10 +213,15 @@ function typeLabel(type: string): string {
 
 /** Pull raster images out of an SVG's inline data URIs into separate files, and
  * rewrite the references to point at `preview.assets/<name>`. Identical images
- * are deduped to one file. Pure-vector SVGs return unchanged with no assets. */
-function externalizeSvgImages(svg: string): { svg: string; assets: AssetFile[] } {
+ * are deduped to one file. `existing` maps base64 data to a file already being
+ * written (the IMAGE-fill originals), so the SVG reuses it instead of shipping
+ * the same bytes twice. Pure-vector SVGs return unchanged with no assets. */
+function externalizeSvgImages(
+  svg: string,
+  existing: Map<string, string>,
+): { svg: string; assets: AssetFile[] } {
   const assets: AssetFile[] = [];
-  const byData = new Map<string, string>(); // base64 data -> file name
+  const byData = new Map(existing); // base64 data -> file name
   const extFor = (mime: string): string =>
     mime === "image/jpeg" ? "jpg" : mime === "image/gif" ? "gif" : mime === "image/png" ? "png" : "bin";
 
@@ -581,6 +616,13 @@ function enterExporting(): void {
   setStatus("Saving files to your folder…", "progress");
 }
 
+/** An error escaped the export flow: unstick the UI and say what happened. */
+function failStuckExport(detail: string): void {
+  if (!busy) return;
+  endExporting();
+  showExportFailed(detail);
+}
+
 /** Leave the exporting state and restore the ready controls. */
 function endExporting(): void {
   busy = false;
@@ -628,44 +670,60 @@ async function postPayload(
   images: { imageHash: string; name: string; bytes: Uint8Array }[],
 ): Promise<PostResult> {
   const assets: AssetFile[] = [];
+  let requestBody: string;
+  trace(
+    `encoding "${payload.nodeName}": svg ${mb(svgBytes?.length ?? 0)}, png ${mb(pngBytes?.length ?? 0)}, ` +
+      `${images?.length ?? 0} images ${mb(sumBytes(images))}, ${icons?.length ?? 0} icons ${mb(sumBytes(icons))}`,
+  );
+  try {
+    // Original-bytes images behind IMAGE fills, matchable to nodes by imageHash;
+    // written into preview.assets/ alongside the preview-only assets below.
+    if (images?.length) {
+      payload.images = images.map((img) => ({
+        imageHash: img.imageHash,
+        name: img.name,
+        base64: bytesToBase64(img.bytes),
+      }));
+    }
 
-  if (svgBytes) {
-    const raw = new TextDecoder().decode(svgBytes);
-    // Pull raster images out to files (keeping the SVG small); the server writes
-    // a preview.html that inlines the SVG so those external images still render.
-    const { svg, assets: images } = externalizeSvgImages(raw);
-    payload.svg = svg;
-    assets.push(...images);
-  }
-  if (pngBytes) payload.png = bytesToBase64(pngBytes);
+    if (svgBytes) {
+      const raw = new TextDecoder().decode(svgBytes);
+      // Pull raster images out to files (keeping the SVG small); the server writes
+      // a preview.html that inlines the SVG so those external images still render.
+      const existing = new Map((payload.images ?? []).map((img) => [img.base64, img.name]));
+      const { svg, assets: svgImages } = externalizeSvgImages(raw, existing);
+      payload.svg = svg;
+      assets.push(...svgImages);
+      trace(`svg rasters: ${svgImages.length} new files, the rest reuse image fills`);
+    }
+    if (pngBytes) payload.png = bytesToBase64(pngBytes);
 
-  // Vector icons from the node-walk share the same preview.assets/ folder.
-  for (const icon of icons ?? []) {
-    assets.push({ name: icon.name, base64: bytesToBase64(icon.bytes) });
-  }
-  if (assets.length) payload.assets = assets;
+    // Vector icons from the node-walk share the same preview.assets/ folder.
+    for (const icon of icons ?? []) {
+      assets.push({ name: icon.name, base64: bytesToBase64(icon.bytes) });
+    }
+    if (assets.length) payload.assets = assets;
 
-  // Original-bytes images behind IMAGE fills, matchable to nodes by imageHash;
-  // written into preview.assets/ alongside the preview-only assets above.
-  if (images?.length) {
-    payload.images = images.map((img) => ({
-      imageHash: img.imageHash,
-      name: img.name,
-      base64: bytesToBase64(img.bytes),
-    }));
+    requestBody = JSON.stringify(payload);
+  } catch (err) {
+    trace(`encoding failed: ${String(err)}`);
+    return { ok: false, body: { error: `Could not encode the export: ${String(err)}` }, iconCount: 0, imageCount: 0 };
   }
 
   const iconCount = assets.filter((a) => a.name.endsWith(".svg")).length;
   const imageCount = assets.length - iconCount;
+  const started = Date.now();
+  trace(`POST ${mb(requestBody.length)} to ${endpointEl.value.trim()}`);
 
   try {
     const res = await fetch(endpointEl.value.trim(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: requestBody,
     });
     setConnection("ok");
     const body = (await res.json().catch(() => ({}))) as SyncResponse;
+    trace(`response ${res.status} after ${Date.now() - started} ms`);
     return {
       ok: res.ok,
       body,
@@ -673,15 +731,16 @@ async function postPayload(
       imageCount,
       folderError: !res.ok && /output folder/i.test(body.error ?? ""),
     };
-  } catch {
+  } catch (err) {
+    trace(`POST failed after ${Date.now() - started} ms: ${String(err)}`);
     setConnection("down");
-    return { ok: false, body: {}, iconCount, imageCount, unreachable: true };
+    return { ok: false, body: { error: String(err) }, iconCount, imageCount, unreachable: true };
   }
 }
 
 /** One-line failure reason for a batch row. */
 function batchError(result: PostResult): string {
-  if (result.unreachable) return "server unreachable";
+  if (result.unreachable) return `server unreachable (${result.body.error})`;
   return result.body.error || "export failed";
 }
 
@@ -760,12 +819,14 @@ window.onmessage = async (event: MessageEvent) => {
     return;
   }
   if (msg.type === "progress") {
-    // Ignore the granular technical text; the calm exporting line already shows.
+    // Keep the calm exporting line in the UI; the granular text goes to the log.
+    trace(msg.message);
     return;
   }
   if (msg.type === "error") {
+    trace(`plugin error: ${msg.message}`);
     endExporting();
-    showExportFailed();
+    showExportFailed(msg.message);
     return;
   }
   if (msg.type === "batch-progress") {
@@ -802,6 +863,7 @@ window.onmessage = async (event: MessageEvent) => {
     return;
   }
   if (msg.type !== "result") return;
+  trace(`serialized "${msg.payload.nodeName}", ${msg.payload.summary.totalNodes} layers`);
 
   const result = await postPayload(msg.payload, msg.svgBytes, msg.pngBytes, msg.icons, msg.images);
   endExporting();
@@ -816,11 +878,11 @@ window.onmessage = async (event: MessageEvent) => {
     });
   } else if (result.unreachable) {
     // Network-level failure: the server couldn't be reached at all.
-    showServerUnreachable();
+    showServerUnreachable(result.body.error);
   } else if (result.folderError) {
     // The server reached us but rejected the destination folder.
     showFolderNotFound();
   } else {
-    showExportFailed();
+    showExportFailed(result.body.error);
   }
 };
