@@ -2,8 +2,9 @@ import { execFile } from "node:child_process";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import type { Duplex } from "node:stream";
 import { promisify } from "node:util";
-import { serve } from "@hono/node-server";
+import { type HttpBindings, serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { ExportPayload, OpenResponse, PickFolderResponse, SyncResponse } from "./shared/types";
@@ -13,11 +14,44 @@ const execFileAsync = promisify(execFile);
 const PORT = Number(process.env.PORT ?? 3579);
 const DEFAULT_OUT = (process.env.OUT_DIR ?? "").trim();
 
-const app = new Hono();
+const app = new Hono<{ Bindings: HttpBindings }>();
+
+function log(message: string): void {
+  console.log(`${new Date().toISOString().slice(11, 23)} ${message}`);
+}
+
+function mb(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 
 // The plugin UI posts from a `null` origin (iframe), so allow any origin. This
 // server binds to 127.0.0.1 only, so it is never reachable off the machine.
 app.use("/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
+
+app.use("/*", async (c, next) => {
+  if (c.req.path === "/log") return next();
+  const label = `${c.req.method} ${c.req.path}`;
+  const length = Number(c.req.header("content-length") ?? 0);
+  const started = Date.now();
+  log(`→ ${label}${length ? ` (${mb(length)})` : ""}`);
+  const { incoming, outgoing } = c.env;
+  incoming.once("aborted", () => log(`✗ ${label} client aborted the upload after ${Date.now() - started} ms`));
+  outgoing.once("close", () => {
+    if (!outgoing.writableFinished) {
+      log(`✗ ${label} connection closed before the response was sent (${Date.now() - started} ms)`);
+    }
+  });
+  await next();
+  log(`← ${label} ${c.res.status} in ${Date.now() - started} ms`);
+});
+
+/** The plugin UI reports each export step here so its progress (and where it
+ * stalls) shows up in this terminal, not only in Figma's plugin console. */
+app.post("/log", async (c) => {
+  const body = await c.req.json<{ message?: string }>().catch(() => ({ message: "(unreadable log body)" }));
+  log(`[plugin] ${body.message ?? ""}`);
+  return c.body(null, 204);
+});
 
 function escapeHtml(value: string): string {
   return value
@@ -121,11 +155,14 @@ app.post("/open", async (c) => {
 
 app.post("/sync", async (c) => {
   let payload: ExportPayload;
+  const parseStarted = Date.now();
   try {
     payload = await c.req.json<ExportPayload>();
-  } catch {
-    return c.json<SyncResponse>({ error: "Invalid JSON body" }, 400);
+  } catch (error) {
+    log(`✗ /sync body could not be parsed after ${Date.now() - parseStarted} ms: ${String(error)}`);
+    return c.json<SyncResponse>({ error: `Invalid JSON body: ${String(error)}` }, 400);
   }
+  log(`  /sync body parsed in ${Date.now() - parseStarted} ms`);
 
   if (!payload || typeof payload.node !== "object" || payload.node === null) {
     return c.json<SyncResponse>({ error: "Missing `node` in payload" }, 400);
@@ -260,18 +297,25 @@ app.post("/sync", async (c) => {
     if (hasSvg) previewFile = "preview.html";
     else if (typeof payload.png === "string") previewFile = "preview.png";
 
-    console.log(`wrote ${payload.nodeName || payload.nodeId} → ${outDir}`);
+    log(`  wrote ${payload.nodeName || payload.nodeId} → ${outDir}`);
     return c.json<SyncResponse>({
       ok: true,
       path: outDir,
       ...(previewFile ? { preview: path.join(outDir, previewFile) } : {}),
     });
   } catch (error) {
+    log(`✗ /sync write failed: ${String(error)}`);
     return c.json<SyncResponse>({ error: `Write failed: ${String(error)}` }, 500);
   }
 });
 
-serve({ fetch: app.fetch, port: PORT, hostname: "127.0.0.1" }, (info) => {
+const server = serve({ fetch: app.fetch, port: PORT, hostname: "127.0.0.1" }, (info) => {
   console.log(`figma-export server → http://127.0.0.1:${info.port}`);
   console.log(`default output folder (OUT_DIR): ${DEFAULT_OUT || "— (set per-export in the plugin)"}`);
+});
+server.on("clientError", (error: NodeJS.ErrnoException, socket: Duplex) => {
+  log(`✗ client error: ${error.code ?? ""} ${String(error)}`);
+  if (!socket.writable) return void socket.destroy();
+  const status = error.code === "ERR_HTTP_REQUEST_TIMEOUT" ? "408 Request Timeout" : "400 Bad Request";
+  socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
 });
